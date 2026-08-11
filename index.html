@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Finances">
+<meta name="theme-color" content="#f9f9f7">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Finances</title>
+<style>
+/* ---------------------------------------------------------- design tokens */
+:root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --plane:          #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --muted:          #898781;
+  --grid:           #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --series-1:       #2a78d6;   /* income  */
+  --series-2:       #eb6834;   /* expense */
+  --seq-500:        #256abf;
+  --seq-450:        #2a78d6;
+  --seq-400:        #3987e5;
+  --seq-350:        #5598e7;
+  --seq-300:        #6da7ec;
+  --seq-250:        #86b6ef;
+  --good:           #0ca30c;
+  --good-text:      #006300;
+  --warning:        #fab219;
+  --critical:       #d03b3b;
+  --shadow:         0 1px 2px rgba(11,11,11,.05), 0 4px 14px rgba(11,11,11,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --plane:          #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted:          #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --seq-500:        #3987e5;
+    --seq-450:        #2a78d6;
+    --seq-400:        #256abf;
+    --seq-350:        #1c5cab;
+    --seq-300:        #184f95;
+    --seq-250:        #104281;
+    --good-text:      #0ca30c;
+    --shadow:         0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+.hide { display: none !important; }
+
+/* ---------------------------------------------------------------- unlock */
+#gate {
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px calc(24px + env(safe-area-inset-left)) 24px calc(24px + env(safe-area-inset-right));
+}
+.gate-card {
+  width: 100%; max-width: 440px;
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 18px;
+  padding: 28px; box-shadow: var(--shadow);
+}
+.gate-card h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+.gate-card p.sub { margin: 0 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); }
+input[type=text], input[type=password], select {
+  width: 100%; padding: 12px 14px; font-size: 16px; font-family: inherit;
+  color: var(--text-primary); background: var(--plane);
+  border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px;
+  min-height: 44px;
+}
+input:focus, select:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+button {
+  font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1); color: var(--text-primary);
+  padding: 12px 18px; min-height: 44px;
+}
+button.primary { background: var(--series-1); color: #fff; border-color: transparent; width: 100%; }
+button.primary:disabled { opacity: .55; cursor: default; }
+.err {
+  background: color-mix(in srgb, var(--critical) 12%, transparent);
+  border: 1px solid var(--critical); color: var(--text-primary);
+  padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-bottom: 16px; line-height: 1.45;
+}
+.hint { font-size: 12px; color: var(--muted); margin: -10px 0 18px; line-height: 1.5; }
+
+/* ----------------------------------------------------------------- shell */
+header.app {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--plane) 88%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: max(10px, env(safe-area-inset-top)) 20px 0;
+}
+.hrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 10px; }
+.brand { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-right: auto; }
+.stamp { font-size: 12px; color: var(--muted); }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs::-webkit-scrollbar { display: none; }
+nav.tabs button {
+  border: none; background: none; border-radius: 0; padding: 10px 14px 12px;
+  font-size: 15px; font-weight: 600; color: var(--muted);
+  border-bottom: 2.5px solid transparent; white-space: nowrap; min-height: 44px;
+}
+nav.tabs button[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--series-1); }
+main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-right)); max-width: 1280px; margin: 0 auto; }
+
+/* ----------------------------------------------------------------- cards */
+.card {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.card p.cap { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+.grid { display: grid; gap: 16px; }
+@media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } }
+@media (max-width: 699px)  { .grid.k4 { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1000px) { .grid.split { grid-template-columns: 1.35fr 1fr; align-items: start; } }
+
+/* ------------------------------------------------------------ stat tiles */
+.tile {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px 18px; box-shadow: var(--shadow);
+}
+.tile .lbl { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.tile .val { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -0.025em; margin-top: 6px; line-height: 1.1; }
+.tile .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 5px; }
+.up { color: var(--good-text); } .down { color: var(--critical); }
+
+/* ---------------------------------------------------------------- charts */
+.chartwrap { position: relative; width: 100%; }
+svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 30; opacity: 0;
+  transition: opacity .1s; background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 9px 11px; font-size: 13px;
+  min-width: 148px; transform: translate(-50%, -100%);
+}
+.tip .t-title { font-weight: 700; margin-bottom: 5px; }
+.tip .t-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--text-secondary); }
+.tip .t-row b { margin-left: auto; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.hit { fill: transparent; cursor: pointer; }
+
+/* ---------------------------------------------------------------- tables */
+.tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+     color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 11px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.desc { max-width: 380px; overflow-wrap: anywhere; }
+.pill { display: inline-block; font-size: 11.5px; padding: 2.5px 8px; border-radius: 999px;
+        background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--text-secondary); white-space: nowrap; }
+.pill.warn { background: color-mix(in srgb, var(--warning) 24%, transparent); color: var(--text-primary); }
+.pill.ok   { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--text-primary); }
+.pill.bad  { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--text-primary); }
+
+/* --------------------------------------------------------------- filters */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.filters .f { display: flex; flex-direction: column; }
+.filters label { margin-bottom: 5px; }
+.filters select, .filters input[type=text] { margin-bottom: 0; min-width: 150px; }
+.filters input[type=text] { min-width: 220px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 10px 16px; font-size: 14px; background: var(--surface-1); color: var(--text-secondary); }
+.seg button[aria-pressed="true"] { background: var(--series-1); color: #fff; }
+.seg button + button { border-left: 1px solid var(--border); }
+
+/* -------------------------------------------------------------- progress */
+.goal + .goal { margin-top: 18px; }
+.goal-head { display: flex; align-items: baseline; gap: 10px; font-size: 14px; margin-bottom: 8px; }
+.goal-head .g-name { font-weight: 600; }
+.goal-head .g-amt { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.bar { height: 10px; background: var(--grid); border-radius: 999px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--series-1); border-radius: 999px; }
+.muted { color: var(--muted); }
+.empty { padding: 28px 4px; text-align: center; color: var(--muted); font-size: 14px; }
+.foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
+.linkish { background: none; border: none; color: var(--series-1); font-size: 13px; padding: 6px; text-decoration: underline; min-height: 0; }
+</style>
+</head>
+<body>
+
+<!-- ======================================================== unlock screen -->
+<div id="gate">
+  <div class="gate-card">
+    <h1>Finances</h1>
+    <p class="sub">Enter your read-only GitHub key once. It is stored only on this device and never leaves it except to fetch your data.</p>
+    <div id="gate-err" class="err hide"></div>
+    <label for="g-owner">GitHub username</label>
+    <input id="g-owner" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="vinu21may">
+    <label for="g-repo">Private data repository</label>
+    <input id="g-repo" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="expense-tracker-data">
+    <label for="g-token">Read-only access token</label>
+    <input id="g-token" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="github_pat_...">
+    <p class="hint">A fine-grained token with <b>Contents: Read-only</b> on that one repository. Revoke it any time from GitHub settings.</p>
+    <button id="g-go" class="primary">Unlock</button>
+  </div>
+</div>
+
+<!-- =============================================================== the app -->
+<div id="app" class="hide">
+  <header class="app">
+    <div class="hrow">
+      <div class="brand">Finances</div>
+      <div class="stamp" id="stamp"></div>
+      <button class="linkish" id="refresh">Refresh</button>
+      <button class="linkish" id="signout">Sign out</button>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
+      <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
+      <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
+      <button role="tab" data-tab="assets"    aria-selected="false">Accounts &amp; Assets</button>
+    </nav>
+  </header>
+  <main>
+    <section id="tab-overview"></section>
+    <section id="tab-spending" class="hide"></section>
+    <section id="tab-txns"     class="hide"></section>
+    <section id="tab-assets"   class="hide"></section>
+    <div class="foot" id="foot"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   1. Small utilities
+   ===================================================================== */
+
+var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
+
+var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function money(n)      { return "₹" + inr0.format(Math.round(n || 0)); }
+function moneyExact(n) { return "₹" + inr2.format(n || 0); }
+
+/* Indian short scale for axis ticks: 1,00,000 -> 1L ; 1,00,00,000 -> 1Cr */
+function moneyShort(n) {
+  var a = Math.abs(n);
+  if (a >= 1e7) return "₹" + (n / 1e7).toFixed(a >= 1e8 ? 0 : 1) + "Cr";
+  if (a >= 1e5) return "₹" + (n / 1e5).toFixed(a >= 1e6 ? 0 : 1) + "L";
+  if (a >= 1e3) return "₹" + Math.round(n / 1e3) + "k";
+  return "₹" + Math.round(n);
+}
+
+var MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function monthKey(d)   { return d.slice(0, 7); }                       // "2026-08"
+function monthLabel(k) { return MONTH_NAMES[+k.slice(5, 7) - 1] + " " + k.slice(0, 4); }
+function monthShort(k) { return MONTH_NAMES[+k.slice(5, 7) - 1]; }
+function dayLabel(d)   { return d.slice(8, 10) + " " + MONTH_NAMES[+d.slice(5, 7) - 1]; }
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function el(id) { return document.getElementById(id); }
+
+/* =====================================================================
+   2. Data loading — local file in dev, GitHub API on the iPad
+   ===================================================================== */
+
+var DATA = null;
+
+function fetchLocal() {
+  return fetch("data.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("no local data");
+    return r.json();
+  });
+}
+
+function fetchGitHub(owner, repo, token) {
+  var url = "https://api.github.com/repos/" + encodeURIComponent(owner) +
+            "/" + encodeURIComponent(repo) + "/contents/data.json";
+  return fetch(url, {
+    cache: "no-store",
+    headers: { "Authorization": "Bearer " + token, "Accept": "application/vnd.github.raw" }
+  }).then(function (r) {
+    if (r.status === 401) throw new Error("That token was rejected. Check you pasted it whole, and that it has not expired.");
+    if (r.status === 403) throw new Error("Access refused. The token needs Contents: Read-only permission on this repository.");
+    if (r.status === 404) throw new Error("Could not find data.json in " + owner + "/" + repo + ". Check the username and repository name, and that the converter has run at least once.");
+    if (!r.ok) throw new Error("GitHub returned an error (" + r.status + ").");
+    return r.json();
+  });
+}
+
+function cacheSave(d) {
+  try { localStorage.setItem(LS.cache, JSON.stringify(d)); } catch (e) { /* quota — memory only */ }
+}
+function cacheLoad() {
+  try { var s = localStorage.getItem(LS.cache); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+}
+
+/* =====================================================================
+   3. Aggregation — every dashboard number is derived here
+   -----------------------------------------------------------------
+   Matches the workbook's own definitions:
+     Net Savings = Income - Expenses - Investments
+     Savings Rate = Net Savings / Income
+   Rows flagged "exclude from charts" are dropped from every total but
+   remain visible in the transactions ledger.
+   ===================================================================== */
+
+function charted(t) { return !t.x; }
+
+function blankAgg() {
+  return { income: 0, expense: 0, invest: 0, transfer: 0, count: 0 };
+}
+function addTo(a, t) {
+  if (t.t === "Income")        a.income   += t.cr;
+  else if (t.t === "Expense")  a.expense  += t.db;
+  else if (t.t === "Savings")  a.invest   += t.db;
+  else if (t.t === "Transfer") a.transfer += t.db;
+  a.count++;
+  return a;
+}
+function net(a)  { return a.income - a.expense - a.invest; }
+function rate(a) { return a.income > 0 ? net(a) / a.income : 0; }
+
+function monthsIndex(txns) {
+  var map = {};
+  txns.forEach(function (t) {
+    if (!charted(t)) return;
+    var k = monthKey(t.d);
+    if (!map[k]) map[k] = blankAgg();
+    addTo(map[k], t);
+  });
+  var keys = Object.keys(map).sort();
+  return { map: map, keys: keys };
+}
+
+function categoryTotals(txns, monthK) {
+  var map = {};
+  txns.forEach(function (t) {
+    if (!charted(t) || t.t !== "Expense") return;
+    if (monthK && monthKey(t.d) !== monthK) return;
+    map[t.c] = (map[t.c] || 0) + t.db;
+  });
+  return Object.keys(map).map(function (k) { return { name: k, value: map[k] }; })
+                         .sort(function (a, b) { return b.value - a.value; });
+}
+
+function subCategoryTotals(txns, cat, monthK) {
+  var map = {};
+  txns.forEach(function (t) {
+    if (!charted(t) || t.t !== "Expense" || t.c !== cat) return;
+    if (monthK && monthKey(t.d) !== monthK) return;
+    map[t.s] = (map[t.s] || 0) + t.db;
+  });
+  return Object.keys(map).map(function (k) { return { name: k, value: map[k] }; })
+                         .sort(function (a, b) { return b.value - a.value; });
+}
+
+/* Closing balance per account = balance on its most recent dated row. */
+function accountBalances(txns) {
+  var last = {};
+  txns.forEach(function (t) {
+    if (!t.bal) return;
+    if (!last[t.ac] || t.d >= last[t.ac].d) last[t.ac] = t;
+  });
+  return last;
+}
+
+/* =====================================================================
+   4. Chart primitives (hand-rolled SVG — no external libraries)
+   ===================================================================== */
+
+/* Rounded corners on the data end only, anchored to the baseline. */
+function barUp(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  if (h <= 0.6) return "";
+  return "M" + x + "," + (y + h) +
+         "V" + (y + r) + "Q" + x + "," + y + " " + (x + r) + "," + y +
+         "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
+         "V" + (y + h) + "Z";
+}
+function barRight(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w);
+  if (w <= 0.6) return "";
+  return "M" + x + "," + y +
+         "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
+         "V" + (y + h - r) + "Q" + (x + w) + "," + (y + h) + " " + (x + w - r) + "," + (y + h) +
+         "H" + x + "Z";
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  var mag = Math.pow(10, Math.floor(Math.log10(v)));
+  var f = v / mag;
+  var steps = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  for (var i = 0; i < steps.length; i++) if (f <= steps[i] + 1e-9) return steps[i] * mag;
+  return 10 * mag;
+}
+
+/*
+ * A couple of one-off property transfers are 20x a normal month. On a plain
+ * linear axis they flatten every other bar into a sliver. So the axis is
+ * capped near the top of the *typical* range; anything above is drawn to the
+ * cap, given a break mark, and labelled with its real value — nothing is
+ * hidden, and the ordinary months stay readable. "Full scale" restores the
+ * true axis.
+ */
+function axisCap(values) {
+  var v = values.filter(function (x) { return x > 0; }).sort(function (a, b) { return a - b; });
+  if (v.length < 4) return { cap: niceMax(v[v.length - 1] || 1), any: false };
+  var max = v[v.length - 1];
+  var p80 = v[Math.floor(v.length * 0.8)];
+  var cap = niceMax(p80 * 1.3);
+  return { cap: cap, any: max > cap * 1.15 };
+}
+
+/* Break mark: two hairlines across a clipped bar, just below the axis top. */
+function breakMark(x, w, yTop) {
+  var s = "";
+  for (var i = 0; i < 2; i++) {
+    var y = yTop + 7 + i * 5;
+    s += '<path d="M' + x + ',' + (y + 3) + ' L' + (x + w / 2) + ',' + (y - 2) + ' L' + (x + w) + ',' + (y + 3) +
+         '" fill="none" stroke="var(--surface-1)" stroke-width="2.5" stroke-linejoin="round"/>';
+  }
+  return s;
+}
+
+/* Tooltip plumbing shared by every chart. */
+function attachTip(wrap, svg) {
+  var tip = document.createElement("div");
+  tip.className = "tip";
+  wrap.appendChild(tip);
+
+  function hide() { tip.style.opacity = 0; }
+
+  svg.querySelectorAll("[data-tip]").forEach(function (node) {
+    function show(ev) {
+      tip.innerHTML = node.getAttribute("data-tip");
+      tip.style.opacity = 1;
+      var wr = wrap.getBoundingClientRect();
+      var nr = node.getBoundingClientRect();
+      var x = nr.left + nr.width / 2 - wr.left;
+      var y = nr.top - wr.top - 8;
+      // keep the tooltip inside the card
+      var half = tip.offsetWidth / 2;
+      x = Math.max(half + 2, Math.min(wr.width - half - 2, x));
+      if (y < tip.offsetHeight + 4) y = nr.bottom - wr.top + tip.offsetHeight + 12;
+      tip.style.left = x + "px";
+      tip.style.top = y + "px";
+      if (ev && ev.type === "touchstart") ev.preventDefault();
+    }
+    node.addEventListener("mouseenter", show);
+    node.addEventListener("mousemove", show);
+    node.addEventListener("touchstart", show, { passive: false });
+    node.addEventListener("mouseleave", hide);
+    node.addEventListener("touchend", hide);
+  });
+  wrap.addEventListener("mouseleave", hide);
+}
+
+/*
+ * Grouped vertical bars — income vs expenses by month.
+ * Two series, so a legend is always present (identity is never colour-alone).
+ */
+function chartIncomeExpense(container, keys, map, fit) {
+  var W = 760, H = 300, PL = 62, PR = 12, PT = 34, PB = 34;
+  var iw = W - PL - PR, ih = H - PT - PB;
+
+  var all = [];
+  keys.forEach(function (k) { all.push(map[k].income, map[k].expense); });
+  var ac = axisCap(all);
+  var trueMax = Math.max.apply(null, all);
+  var top = (fit && ac.any) ? ac.cap : niceMax(trueMax);
+
+  var band = iw / keys.length;
+  var gap = 2;                          // 2px surface gap between adjacent bars
+  var bw = Math.max(4, Math.min(22, (band - 14 - gap) / 2));
+
+  var s = "";
+  // recessive gridlines + axis ticks
+  for (var g = 0; g <= 4; g++) {
+    var v = top * g / 4, y = PT + ih - (v / top) * ih;
+    s += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y +
+         '" stroke="var(--grid)" stroke-width="1"/>' +
+         '<text x="' + (PL - 9) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' +
+         moneyShort(v) + '</text>';
+  }
+
+  keys.forEach(function (k, i) {
+    var a = map[k];
+    var cx = PL + band * i + band / 2;
+    var x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
+    var base = PT + ih;
+
+    var pair = [[a.income, x1, "var(--series-1)"], [a.expense, x2, "var(--series-2)"]];
+    var bothOver = a.income > top && a.expense > top;
+    pair.forEach(function (b, j) {
+      var val = b[0], bx = b[1];
+      var over = val > top;
+      var h = Math.min(val, top) / top * ih;
+      s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '"/>';
+      if (over) {
+        s += breakMark(bx, bw, PT);
+        // When both bars overflow their labels would collide, so stagger them.
+        var ly = bothOver ? (j === 0 ? PT - 19 : PT - 6) : PT - 7;
+        s += '<text x="' + (bx + bw / 2) + '" y="' + ly + '" text-anchor="middle" font-size="10.5" ' +
+             'fill="var(--text-secondary)" font-weight="700">' + moneyShort(val) + '</text>';
+      }
+    });
+
+    var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
+      '<div class="t-row"><i class="swatch" style="background:var(--series-1)"></i>Income<b>' + money(a.income) + '</b></div>' +
+      '<div class="t-row"><i class="swatch" style="background:var(--series-2)"></i>Expenses<b>' + money(a.expense) + '</b></div>' +
+      (a.invest ? '<div class="t-row"><i class="swatch" style="background:var(--muted)"></i>Invested<b>' + money(a.invest) + '</b></div>' : '') +
+      '<div class="t-row">Net<b>' + money(net(a)) + '</b></div>' +
+      '<div class="t-row">Transactions<b>' + a.count + '</b></div>';
+
+    // hit target wider than the marks
+    s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
+         '" data-tip="' + esc(tip) + '"/>';
+
+    s += '<text x="' + cx + '" y="' + (PT + ih + 19) + '" text-anchor="middle" font-size="11.5" fill="var(--muted)">' +
+         monthShort(k) + '</text>';
+    if (k.slice(5, 7) === "01" || i === 0) {
+      s += '<text x="' + cx + '" y="' + (PT + ih + 32) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' +
+           k.slice(0, 4) + '</text>';
+    }
+  });
+
+  s += '<line x1="' + PL + '" y1="' + (PT + ih) + '" x2="' + (W - PR) + '" y2="' + (PT + ih) +
+       '" stroke="var(--baseline)" stroke-width="1"/>';
+
+  container.innerHTML =
+    '<div class="legend">' +
+      '<span><i class="swatch" style="background:var(--series-1)"></i>Income</span>' +
+      '<span><i class="swatch" style="background:var(--series-2)"></i>Expenses</span>' +
+      (ac.any
+        ? '<span style="margin-left:auto"><span class="seg">' +
+            '<button id="ie-fit"  aria-pressed="' + !!fit + '">Typical range</button>' +
+            '<button id="ie-full" aria-pressed="' + !fit + '">Full scale</button>' +
+          '</span></span>'
+        : "") +
+    '</div>' +
+    '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Income versus expenses by month">' + s + '</svg></div>' +
+    (fit && ac.any
+      ? '<p class="cap" style="margin:10px 0 0">Bars above ' + moneyShort(top) +
+        ' are clipped and labelled with their real value — a few one-off transfers are many times a normal month.</p>'
+      : "");
+
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+
+  var fitBtn = el("ie-fit"), fullBtn = el("ie-full");
+  if (fitBtn) {
+    fitBtn.addEventListener("click", function () { STATE.fitScale = true; renderOverview(); });
+    fullBtn.addEventListener("click", function () { STATE.fitScale = false; renderOverview(); });
+  }
+}
+
+/*
+ * Horizontal bars — spend by category. This encodes magnitude of a single
+ * measure, so it takes one sequential hue rather than categorical colours.
+ * Values are direct-labelled, which also satisfies the contrast relief rule.
+ */
+function chartCategories(container, rows, total, onPick) {
+  if (!rows.length) { container.innerHTML = '<div class="empty">No spending recorded in this period.</div>'; return; }
+
+  var shown = rows.slice(0, 12);
+  var rest = rows.slice(12);
+  if (rest.length) {
+    shown.push({ name: "Other (" + rest.length + " categories)", value: rest.reduce(function (s, r) { return s + r.value; }, 0), lump: true });
+  }
+
+  var rowH = 30, W = 760, PL = 172, PR = 96, PT = 4;
+  var H = PT + shown.length * rowH + 4;
+  var iw = W - PL - PR;
+  var max = shown.reduce(function (m, r) { return Math.max(m, r.value); }, 0) || 1;
+  var ramp = ["var(--seq-500)", "var(--seq-450)", "var(--seq-400)", "var(--seq-350)", "var(--seq-300)", "var(--seq-250)"];
+
+  var s = "";
+  shown.forEach(function (r, i) {
+    var y = PT + i * rowH;
+    var bh = 16;
+    var by = y + (rowH - bh) / 2 - 1;
+    var w = Math.max(1, (r.value / max) * iw);
+    var colour = ramp[Math.min(ramp.length - 1, Math.floor(i / Math.max(1, shown.length / ramp.length)))];
+    var pct = total > 0 ? (r.value / total * 100) : 0;
+
+    var label = r.name.length > 24 ? r.name.slice(0, 23) + "…" : r.name;
+    s += '<text x="' + (PL - 12) + '" y="' + (by + 12) + '" text-anchor="end" font-size="12.5" fill="var(--text-secondary)">' +
+         esc(label) + '</text>';
+    s += '<path d="' + barRight(PL, by, w, bh, 4) + '" fill="' + colour + '"/>';
+    s += '<text x="' + (PL + w + 10) + '" y="' + (by + 12) + '" font-size="12.5" fill="var(--text-primary)" font-variant-numeric="tabular-nums">' +
+         moneyShort(r.value) + '</text>';
+    s += '<text x="' + (W - 6) + '" y="' + (by + 12) + '" text-anchor="end" font-size="11.5" fill="var(--muted)" font-variant-numeric="tabular-nums">' +
+         pct.toFixed(1) + '%</text>';
+
+    var tip = '<div class="t-title">' + esc(r.name) + '</div>' +
+      '<div class="t-row">Spent<b>' + money(r.value) + '</b></div>' +
+      '<div class="t-row">Share<b>' + pct.toFixed(1) + '%</b></div>' +
+      (r.lump ? '' : '<div class="t-row muted" style="font-size:12px">Tap for sub-categories</div>');
+    s += '<rect class="hit" x="0" y="' + y + '" width="' + W + '" height="' + rowH +
+         '" data-tip="' + esc(tip) + '"' + (r.lump ? '' : ' data-cat="' + esc(r.name) + '"') + '/>';
+  });
+
+  container.innerHTML = '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Spending by category">' + s + '</svg></div>';
+
+  var wrap = container.querySelector(".chartwrap");
+  var svg = wrap.querySelector("svg");
+  attachTip(wrap, svg);
+  if (onPick) {
+    svg.querySelectorAll("[data-cat]").forEach(function (n) {
+      n.addEventListener("click", function () { onPick(n.getAttribute("data-cat")); });
+    });
+  }
+}
+
+/* Net-position sparkline: monthly net, above/below zero. */
+function chartNet(container, keys, map, fit) {
+  var W = 760, H = 150, PL = 62, PR = 12, PT = 18, PB = 26;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var vals = keys.map(function (k) { return net(map[k]); });
+  var ac = axisCap(vals.map(Math.abs));
+  var hiTrue = niceMax(Math.max.apply(null, vals.concat([0])));
+  var hi = (fit && ac.any) ? Math.min(ac.cap, hiTrue) : hiTrue;
+  var lo = -niceMax(Math.abs(Math.min.apply(null, vals.concat([0]))));
+  var span = (hi - lo) || 1;
+  var zeroY = PT + ih - ((0 - lo) / span) * ih;
+  var band = iw / keys.length;
+  var bw = Math.max(4, Math.min(26, band - 8));
+
+  var s = '<line x1="' + PL + '" y1="' + zeroY + '" x2="' + (W - PR) + '" y2="' + zeroY +
+          '" stroke="var(--baseline)" stroke-width="1"/>' +
+          '<text x="' + (PL - 9) + '" y="' + (zeroY + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">₹0</text>' +
+          '<text x="' + (PL - 9) + '" y="' + (PT + 10) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' + moneyShort(hi) + '</text>';
+
+  keys.forEach(function (k, i) {
+    var v = vals[i];
+    var over = v > hi;
+    var vClamped = Math.min(v, hi);
+    var x = PL + band * i + (band - bw) / 2;
+    var y = PT + ih - ((vClamped - lo) / span) * ih;
+    var h = Math.abs(zeroY - y);
+    // Diverging polarity: blue above zero, red below.
+    var colour = v >= 0 ? "var(--series-1)" : "var(--critical)";
+    var d;
+    if (v >= 0) {
+      d = barUp(x, y, bw, h, 4);
+    } else {
+      // mirrored: rounded end at the bottom, anchored to the zero line
+      d = "M" + x + "," + zeroY + "V" + (y - 4) + "Q" + x + "," + y + " " + (x + 4) + "," + y +
+          "H" + (x + bw - 4) + "Q" + (x + bw) + "," + y + " " + (x + bw) + "," + (y - 4) +
+          "V" + zeroY + "Z";
+    }
+    s += '<path d="' + d + '" fill="' + colour + '"/>';
+    if (over) {
+      s += breakMark(x, bw, PT);
+      s += '<text x="' + (x + bw / 2) + '" y="' + (PT - 6) + '" text-anchor="middle" font-size="10" ' +
+           'fill="var(--text-secondary)" font-weight="600">' + moneyShort(v) + '</text>';
+    }
+    var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
+      '<div class="t-row">Net saved<b>' + money(v) + '</b></div>' +
+      '<div class="t-row">Savings rate<b>' + (rate(map[k]) * 100).toFixed(1) + '%</b></div>';
+    s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
+         '" data-tip="' + esc(tip) + '"/>';
+    s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
+         monthShort(k) + '</text>';
+  });
+
+  container.innerHTML = '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Net saved each month">' + s + '</svg></div>';
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+}
+
+/* =====================================================================
+   5. Views
+   ===================================================================== */
+
+var STATE = { tab: "overview", month: null, spendScope: "month", spendCat: null, fitScale: true,
+              tq: "", tAcct: "", tCat: "", tType: "", tMonth: "", tLimit: 200 };
+
+function monthOptions(keys, sel, includeAll, allLabel) {
+  var o = includeAll ? '<option value="">' + (allLabel || "All time") + '</option>' : "";
+  keys.slice().reverse().forEach(function (k) {
+    o += '<option value="' + k + '"' + (k === sel ? " selected" : "") + ">" + monthLabel(k) + "</option>";
+  });
+  return o;
+}
+
+function renderOverview() {
+  var idx = monthsIndex(DATA.txns);
+  var keys = idx.keys, map = idx.map;
+  if (!STATE.month || keys.indexOf(STATE.month) < 0) STATE.month = keys[keys.length - 1];
+
+  var a = map[STATE.month] || blankAgg();
+  var pos = keys.indexOf(STATE.month);
+  var prev = pos > 0 ? map[keys[pos - 1]] : null;
+
+  function delta(cur, was, goodWhenUp) {
+    if (!was || was === 0) return '<div class="sub muted">no prior month</div>';
+    var pct = (cur - was) / Math.abs(was) * 100;
+    var up = pct >= 0;
+    var good = goodWhenUp ? up : !up;
+    var arrow = up ? "↑" : "↓";
+    return '<div class="sub ' + (good ? "up" : "down") + '">' + arrow + " " +
+           Math.abs(pct).toFixed(1) + "% vs " + monthLabel(keys[pos - 1]) + "</div>";
+  }
+
+  var last12 = keys.slice(-12);
+  var yr = STATE.month.slice(0, 4);
+  var ytd = blankAgg();
+  keys.forEach(function (k) {
+    if (k.slice(0, 4) === yr && k <= STATE.month) {
+      var m = map[k];
+      ytd.income += m.income; ytd.expense += m.expense; ytd.invest += m.invest; ytd.count += m.count;
+    }
+  });
+
+  var cats = categoryTotals(DATA.txns, STATE.month);
+  var catTotal = cats.reduce(function (s, r) { return s + r.value; }, 0);
+
+  var html =
+    '<div class="filters">' +
+      '<div class="f"><label for="ov-month">Month</label>' +
+      '<select id="ov-month">' + monthOptions(keys, STATE.month, false) + '</select></div>' +
+    '</div>' +
+
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Income</div><div class="val">' + money(a.income) + '</div>' + delta(a.income, prev && prev.income, true) + '</div>' +
+      '<div class="tile"><div class="lbl">Expenses</div><div class="val">' + money(a.expense) + '</div>' + delta(a.expense, prev && prev.expense, false) + '</div>' +
+      '<div class="tile"><div class="lbl">Net saved</div><div class="val">' + money(net(a)) + '</div>' +
+        '<div class="sub">' + (a.invest ? "after " + money(a.invest) + " invested" : "nothing invested this month") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
+        '<div class="sub">' + a.count + ' transactions</div></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Income vs expenses</h2><p class="cap">Last ' + last12.length + ' months. Tap a month for detail.</p>' +
+      '<div id="c-ie"></div></div>' +
+
+    '<div class="grid split">' +
+      '<div class="card"><h2>Where ' + monthLabel(STATE.month) + ' went</h2>' +
+        '<p class="cap">' + money(catTotal) + ' across ' + cats.length + ' categories. Tap a bar to open it.</p>' +
+        '<div id="c-cat"></div></div>' +
+      '<div class="card"><h2>Net saved each month</h2><p class="cap">Income minus expenses and investments.</p>' +
+        '<div id="c-net"></div>' +
+        '<div style="margin-top:18px;border-top:1px solid var(--grid);padding-top:14px">' +
+          '<div style="font-size:13px;font-weight:600;margin-bottom:8px">' + yr + ' year to date</div>' +
+          '<table><tbody>' +
+            '<tr><td>Income</td><td class="num">' + money(ytd.income) + '</td></tr>' +
+            '<tr><td>Expenses</td><td class="num">' + money(ytd.expense) + '</td></tr>' +
+            '<tr><td>Invested</td><td class="num">' + money(ytd.invest) + '</td></tr>' +
+            '<tr><td><b>Net saved</b></td><td class="num"><b>' + money(net(ytd)) + '</b></td></tr>' +
+          '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  var host = el("tab-overview");
+  host.innerHTML = html;
+  chartIncomeExpense(el("c-ie"), last12, map, STATE.fitScale);
+  chartCategories(el("c-cat"), cats, catTotal, function (cat) {
+    STATE.spendCat = cat; STATE.spendScope = "month"; switchTab("spending");
+  });
+  chartNet(el("c-net"), last12, map, STATE.fitScale);
+
+  el("ov-month").addEventListener("change", function () { STATE.month = this.value; renderOverview(); });
+}
+
+function renderSpending() {
+  var idx = monthsIndex(DATA.txns);
+  var keys = idx.keys;
+  if (!STATE.month || keys.indexOf(STATE.month) < 0) STATE.month = keys[keys.length - 1];
+  var scopeMonth = STATE.spendScope === "month" ? STATE.month : null;
+
+  var cats = categoryTotals(DATA.txns, scopeMonth);
+  var total = cats.reduce(function (s, r) { return s + r.value; }, 0);
+  if (STATE.spendCat && !cats.some(function (c) { return c.name === STATE.spendCat; })) STATE.spendCat = null;
+
+  var months = scopeMonth ? 1 : keys.length;
+
+  var html =
+    '<div class="filters">' +
+      '<div class="f"><label>Period</label><div class="seg">' +
+        '<button id="sc-month" aria-pressed="' + (STATE.spendScope === "month") + '">Single month</button>' +
+        '<button id="sc-all"   aria-pressed="' + (STATE.spendScope === "all") + '">All time</button>' +
+      '</div></div>' +
+      (STATE.spendScope === "month"
+        ? '<div class="f"><label for="sp-month">Month</label><select id="sp-month">' + monthOptions(keys, STATE.month, false) + '</select></div>'
+        : "") +
+    '</div>' +
+
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Total spent</div><div class="val">' + money(total) + '</div>' +
+        '<div class="sub">' + (scopeMonth ? monthLabel(scopeMonth) : keys.length + " months") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Categories</div><div class="val">' + cats.length + '</div>' +
+        '<div class="sub">' + (cats[0] ? esc(cats[0].name) + " leads" : "—") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Monthly average</div><div class="val">' + money(total / months) + '</div>' +
+        '<div class="sub">across ' + months + ' month' + (months === 1 ? "" : "s") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Biggest category</div><div class="val" style="font-size:19px">' +
+        (cats[0] ? money(cats[0].value) : "—") + '</div>' +
+        '<div class="sub">' + (cats[0] ? (cats[0].value / (total || 1) * 100).toFixed(1) + "% of spending" : "—") + '</div></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Spending by category</h2>' +
+      '<p class="cap">' + (scopeMonth ? monthLabel(scopeMonth) : "All time") + '. Tap a bar to break it down.</p>' +
+      '<div id="s-cat"></div></div>' +
+
+    '<div class="card" id="s-sub-card">' +
+      (STATE.spendCat
+        ? '<h2>' + esc(STATE.spendCat) + '</h2><p class="cap">Sub-categories, ' +
+          (scopeMonth ? monthLabel(scopeMonth) : "all time") + '.</p><div id="s-sub"></div>'
+        : '<h2>Sub-category detail</h2><p class="cap">Tap any category above to break it into sub-categories.</p>') +
+    '</div>';
+
+  var host = el("tab-spending");
+  host.innerHTML = html;
+
+  chartCategories(el("s-cat"), cats, total, function (cat) { STATE.spendCat = cat; renderSpending(); });
+  if (STATE.spendCat) {
+    var subs = subCategoryTotals(DATA.txns, STATE.spendCat, scopeMonth);
+    var subTotal = subs.reduce(function (s, r) { return s + r.value; }, 0);
+    chartCategories(el("s-sub"), subs, subTotal, null);
+  }
+
+  el("sc-month").addEventListener("click", function () { STATE.spendScope = "month"; renderSpending(); });
+  el("sc-all").addEventListener("click", function () { STATE.spendScope = "all"; renderSpending(); });
+  var sm = el("sp-month");
+  if (sm) sm.addEventListener("change", function () { STATE.month = this.value; renderSpending(); });
+}
+
+function filteredTxns() {
+  var q = STATE.tq.trim().toLowerCase();
+  return DATA.txns.filter(function (t) {
+    if (STATE.tAcct && t.ac !== STATE.tAcct) return false;
+    if (STATE.tCat && t.c !== STATE.tCat) return false;
+    if (STATE.tType && t.t !== STATE.tType) return false;
+    if (STATE.tMonth && monthKey(t.d) !== STATE.tMonth) return false;
+    if (q && (t.ds + " " + t.c + " " + t.s + " " + t.m + " " + t.n).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  }).sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
+}
+
+function renderTxns() {
+  var idx = monthsIndex(DATA.txns);
+  var accts = {}, cats = {};
+  DATA.txns.forEach(function (t) { accts[t.ac] = 1; cats[t.c] = 1; });
+  var acctList = Object.keys(accts).sort();
+  var catList = Object.keys(cats).sort();
+
+  var rows = filteredTxns();
+  var shown = rows.slice(0, STATE.tLimit);
+  var debits = rows.reduce(function (s, t) { return s + (t.t === "Expense" ? t.db : 0); }, 0);
+  var credits = rows.reduce(function (s, t) { return s + (t.t === "Income" ? t.cr : 0); }, 0);
+  var nExcluded = rows.reduce(function (s, t) { return s + (t.x ? 1 : 0); }, 0);
+
+  function opts(list, sel, allLabel) {
+    var o = '<option value="">' + allLabel + "</option>";
+    list.forEach(function (v) { o += '<option value="' + esc(v) + '"' + (v === sel ? " selected" : "") + ">" + esc(v) + "</option>"; });
+    return o;
+  }
+
+  var html =
+    '<div class="filters">' +
+      '<div class="f"><label for="t-q">Search</label><input id="t-q" type="text" placeholder="Merchant, description, note…" value="' + esc(STATE.tq) + '"></div>' +
+      '<div class="f"><label for="t-month">Month</label><select id="t-month">' + monthOptions(idx.keys, STATE.tMonth, true) + '</select></div>' +
+      '<div class="f"><label for="t-acct">Account</label><select id="t-acct">' + opts(acctList, STATE.tAcct, "All accounts") + '</select></div>' +
+      '<div class="f"><label for="t-cat">Category</label><select id="t-cat">' + opts(catList, STATE.tCat, "All categories") + '</select></div>' +
+      '<div class="f"><label for="t-type">Type</label><select id="t-type">' + opts(["Expense","Income","Savings","Transfer"], STATE.tType, "All types") + '</select></div>' +
+      '<div class="f"><label>&nbsp;</label><button id="t-clear">Clear</button></div>' +
+    '</div>' +
+
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Matching</div><div class="val">' + rows.length + '</div><div class="sub">of ' + DATA.txns.length + ' transactions</div></div>' +
+      '<div class="tile"><div class="lbl">Money out</div><div class="val">' + money(debits) + '</div><div class="sub">expenses only</div></div>' +
+      '<div class="tile"><div class="lbl">Money in</div><div class="val">' + money(credits) + '</div><div class="sub">income only</div></div>' +
+      '<div class="tile"><div class="lbl">Net</div><div class="val">' + money(credits - debits) + '</div><div class="sub">in minus out</div></div>' +
+    '</div>' +
+
+    (nExcluded
+      ? '<p class="cap" style="margin:-4px 0 16px">These totals cover every row listed below, including the ' + nExcluded +
+        ' marked <span class="pill warn">excluded from charts</span> — so they will not always match the Overview tab, which leaves those out.</p>'
+      : "") +
+
+    '<div class="card">' +
+      (rows.length === 0
+        ? '<div class="empty">Nothing matches those filters.</div>'
+        : '<div class="tbl-scroll"><table><thead><tr>' +
+          '<th>Date</th><th>Description</th><th>Category</th><th>Account</th>' +
+          '<th class="num">Out</th><th class="num">In</th><th class="num">Balance</th>' +
+          '</tr></thead><tbody>' +
+          shown.map(function (t) {
+            return '<tr>' +
+              '<td style="white-space:nowrap">' + dayLabel(t.d) + '<div class="muted" style="font-size:11px">' + t.d.slice(0, 4) + '</div></td>' +
+              '<td class="desc">' + esc(t.ds) +
+                (t.n ? '<div class="muted" style="font-size:12px;margin-top:2px">' + esc(t.n) + '</div>' : "") +
+                (t.x ? ' <span class="pill warn">excluded from charts</span>' : "") + '</td>' +
+              '<td><span class="pill">' + esc(t.c) + '</span><div class="muted" style="font-size:11.5px;margin-top:3px">' + esc(t.s) + '</div></td>' +
+              '<td style="white-space:nowrap">' + esc(t.ac) + '</td>' +
+              '<td class="num">' + (t.db ? moneyExact(t.db) : '<span class="muted">—</span>') + '</td>' +
+              '<td class="num">' + (t.cr ? '<span class="up">' + moneyExact(t.cr) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+              '<td class="num muted">' + (t.bal ? money(t.bal) : "—") + '</td>' +
+            '</tr>';
+          }).join("") +
+          '</tbody></table></div>' +
+          (rows.length > shown.length
+            ? '<div style="text-align:center;padding-top:14px"><button id="t-more">Show 200 more (' + (rows.length - shown.length) + ' remaining)</button></div>'
+            : "")) +
+    '</div>';
+
+  var host = el("tab-txns");
+  host.innerHTML = html;
+
+  var q = el("t-q");
+  var timer = null;
+  q.addEventListener("input", function () {
+    clearTimeout(timer);
+    var v = this.value;
+    timer = setTimeout(function () {
+      STATE.tq = v; STATE.tLimit = 200; renderTxns();
+      var f = el("t-q"); f.focus(); f.setSelectionRange(f.value.length, f.value.length);
+    }, 250);
+  });
+  ["t-month:tMonth", "t-acct:tAcct", "t-cat:tCat", "t-type:tType"].forEach(function (pair) {
+    var p = pair.split(":");
+    el(p[0]).addEventListener("change", function () { STATE[p[1]] = this.value; STATE.tLimit = 200; renderTxns(); });
+  });
+  el("t-clear").addEventListener("click", function () {
+    STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = ""; STATE.tType = ""; STATE.tMonth = ""; STATE.tLimit = 200; renderTxns();
+  });
+  var more = el("t-more");
+  if (more) more.addEventListener("click", function () { STATE.tLimit += 200; renderTxns(); });
+}
+
+function renderAssets() {
+  var bal = accountBalances(DATA.txns);
+  var today = new Date().toISOString().slice(0, 10);
+
+  var accHtml = DATA.accounts.map(function (a) {
+    var b = bal[a.name];
+    var isCard = /credit/i.test(a.type || "");
+    return '<tr>' +
+      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' + esc(a.bank) + " · " + esc(a.type) + '</div></td>' +
+      '<td>' + esc(a.notes || "") + '</td>' +
+      '<td class="num">' + (b ? money(b.bal) : '<span class="muted">' + (isCard ? "card — see EMI below" : "no balance recorded") + '</span>') + '</td>' +
+      '<td class="num muted" style="font-size:12.5px">' + (b ? dayLabel(b.d) + " " + b.d.slice(0, 4) : "—") + '</td>' +
+    '</tr>';
+  }).join("");
+
+  var goalHtml = DATA.goals.length ? DATA.goals.map(function (g) {
+    var pct = Math.max(0, Math.min(100, g.saved / g.target * 100));
+    return '<div class="goal">' +
+      '<div class="goal-head"><span class="g-name">' + esc(g.name) + '</span>' +
+      '<span class="pill">' + pct.toFixed(0) + '%</span>' +
+      '<span class="g-amt">' + money(g.saved) + " of " + money(g.target) + '</span></div>' +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="muted" style="font-size:12px;margin-top:6px">' +
+        (g.date ? "Target " + dayLabel(g.date) + " " + g.date.slice(0, 4) : "No target date") +
+        " · " + money(Math.max(0, g.target - g.saved)) + " to go" +
+      '</div></div>';
+  }).join("") : '<div class="empty">No savings goals set.</div>';
+
+  var fdTotal = DATA.fds.reduce(function (s, f) { return s + f.principal; }, 0);
+  var fdInt = DATA.fds.reduce(function (s, f) { return s + f.interest; }, 0);
+  var fdHtml = DATA.fds.length ? DATA.fds.map(function (f) {
+    var matured = f.maturity && f.maturity < today;
+    var days = f.maturity ? Math.round((new Date(f.maturity) - new Date(today)) / 86400000) : null;
+    return '<tr>' +
+      '<td><b>' + esc(f.id) + '</b><div class="muted" style="font-size:12px">' + f.rate + '% p.a.</div></td>' +
+      '<td class="num">' + money(f.principal) + '</td>' +
+      '<td class="num">' + money(f.matAmt) + '<div class="muted" style="font-size:12px">+' + money(f.interest) + '</div></td>' +
+      '<td>' + (f.maturity ? dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "—") + '</td>' +
+      '<td>' + (matured ? '<span class="pill ok">matured</span>'
+                        : '<span class="pill' + (days !== null && days <= 30 ? " warn" : "") + '">' + (days !== null ? days + " days" : "—") + '</span>') + '</td>' +
+    '</tr>';
+  }).join("") : "";
+
+  var emiP = DATA.emis.reduce(function (s, e) { return s + e.balP; }, 0);
+  var emiI = DATA.emis.reduce(function (s, e) { return s + e.balI; }, 0);
+  var emiHtml = DATA.emis.length ? DATA.emis.map(function (e) {
+    return '<tr>' +
+      '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">Card ' + esc(e.card) + " · " + esc(e.loanNo) + '</div></td>' +
+      '<td class="num">' + money(e.amount) + '</td>' +
+      '<td class="num">' + money(e.balP) + '</td>' +
+      '<td class="num">' + money(e.balI) + '</td>' +
+      '<td>' + esc(e.balT) + '<div class="muted" style="font-size:12px">of ' + esc(e.tenure) + " at " + esc(e.rate) + '</div></td>' +
+    '</tr>';
+  }).join("") : "";
+
+  el("tab-assets").innerHTML =
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
+        '<div class="sub">' + DATA.fds.length + ' deposits · ' + money(fdInt) + ' interest due</div></div>' +
+      '<div class="tile"><div class="lbl">Loan outstanding</div><div class="val">' + money(emiP + emiI) + '</div>' +
+        '<div class="sub">' + DATA.emis.length + ' active EMI loans</div></div>' +
+      '<div class="tile"><div class="lbl">Goals progress</div><div class="val">' +
+        (DATA.goals.length
+          ? (DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0) /
+             DATA.goals.reduce(function (s, g) { return s + g.target; }, 0) * 100).toFixed(0) + "%"
+          : "—") + '</div>' +
+        '<div class="sub">' + DATA.goals.length + ' goals tracked</div></div>' +
+      '<div class="tile"><div class="lbl">Card transactions</div><div class="val">' + DATA.cc.length + '</div>' +
+        '<div class="sub">on file</div></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Accounts</h2><p class="cap">Balance shown is the closing balance on the most recent transaction in the ledger.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Account</th><th>Notes</th><th class="num">Balance</th><th class="num">As of</th></tr></thead>' +
+      '<tbody>' + accHtml + '</tbody></table></div></div>' +
+
+    '<div class="grid k2">' +
+      '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>' +
+      '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdTotal) + ' invested.</p>' +
+        (fdHtml
+          ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
+          : '<div class="empty">No fixed deposits.</div>') +
+      '</div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Credit card EMI loans</h2>' +
+      '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
+      (emiHtml
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
+        : '<div class="empty">No active EMI loans.</div>') +
+    '</div>';
+}
+
+/* =====================================================================
+   6. Shell wiring
+   ===================================================================== */
+
+function switchTab(name) {
+  STATE.tab = name;
+  document.querySelectorAll("nav.tabs button").forEach(function (b) {
+    b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  });
+  ["overview", "spending", "txns", "assets"].forEach(function (t) {
+    el("tab-" + t).classList.toggle("hide", t !== name);
+  });
+  if (name === "overview") renderOverview();
+  if (name === "spending") renderSpending();
+  if (name === "txns")     renderTxns();
+  if (name === "assets")   renderAssets();
+  window.scrollTo(0, 0);
+}
+
+function boot(data, fromCache) {
+  DATA = data;
+  el("gate").classList.add("hide");
+  el("app").classList.remove("hide");
+
+  var gen = DATA.generated ? new Date(DATA.generated) : null;
+  el("stamp").textContent = (fromCache ? "Offline copy · " : "") +
+    (gen ? "Data to " + gen.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+
+  el("foot").textContent = DATA.txns.length + " transactions · " +
+    monthLabel(monthKey(DATA.txns[0].d)) + " to " + monthLabel(monthKey(DATA.txns[DATA.txns.length - 1].d));
+
+  switchTab(STATE.tab);
+}
+
+document.querySelectorAll("nav.tabs button").forEach(function (b) {
+  b.addEventListener("click", function () { switchTab(b.dataset.tab); });
+});
+
+el("refresh").addEventListener("click", function () {
+  var owner = localStorage.getItem(LS.owner), repo = localStorage.getItem(LS.repo), token = localStorage.getItem(LS.token);
+  if (!owner) { location.reload(); return; }
+  var btn = this; btn.textContent = "Refreshing…";
+  fetchGitHub(owner, repo, token).then(function (d) {
+    cacheSave(d); boot(d, false); btn.textContent = "Refresh";
+  }).catch(function (e) {
+    btn.textContent = "Refresh"; alert(e.message);
+  });
+});
+
+el("signout").addEventListener("click", function () {
+  if (!confirm("Remove the saved key and cached data from this device?")) return;
+  [LS.owner, LS.repo, LS.token, LS.cache].forEach(function (k) { localStorage.removeItem(k); });
+  location.reload();
+});
+
+function gateError(msg) {
+  var e = el("gate-err"); e.textContent = msg; e.classList.remove("hide");
+}
+
+el("g-go").addEventListener("click", function () {
+  var owner = el("g-owner").value.trim();
+  var repo  = el("g-repo").value.trim();
+  var token = el("g-token").value.trim();
+  if (!owner || !repo || !token) { gateError("Fill in all three fields."); return; }
+
+  var btn = this; btn.disabled = true; btn.textContent = "Checking…";
+  el("gate-err").classList.add("hide");
+
+  fetchGitHub(owner, repo, token).then(function (d) {
+    localStorage.setItem(LS.owner, owner);
+    localStorage.setItem(LS.repo, repo);
+    localStorage.setItem(LS.token, token);
+    cacheSave(d);
+    boot(d, false);
+  }).catch(function (e) {
+    gateError(e.message);
+    btn.disabled = false; btn.textContent = "Unlock";
+  });
+});
+
+el("g-token").addEventListener("keydown", function (e) { if (e.key === "Enter") el("g-go").click(); });
+
+/* Startup: local file (development) -> GitHub (saved key) -> offline cache -> unlock screen. */
+(function start() {
+  fetchLocal().then(function (d) {
+    boot(d, false);
+  }).catch(function () {
+    var owner = localStorage.getItem(LS.owner);
+    var repo = localStorage.getItem(LS.repo);
+    var token = localStorage.getItem(LS.token);
+    if (owner && repo && token) {
+      fetchGitHub(owner, repo, token).then(function (d) {
+        cacheSave(d); boot(d, false);
+      }).catch(function (err) {
+        var c = cacheLoad();
+        if (c) { boot(c, true); }
+        else { el("g-owner").value = owner; el("g-repo").value = repo; gateError(err.message); }
+      });
+    }
+  });
+})();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () { /* offline support is optional */ });
+  });
+}
+</script>
+</body>
+</html>
