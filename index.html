@@ -386,14 +386,22 @@ function subCategoryTotals(txns, cat, monthK) {
                          .sort(function (a, b) { return b.value - a.value; });
 }
 
-/* Closing balance per account = balance on its most recent dated row. */
-function accountBalances(txns) {
-  var last = {};
+/*
+ * Net movement per account: everything in, minus everything out, across the
+ * whole ledger. This is NOT a closing balance — the sheet's opening balances
+ * are all zero, so a true balance cannot be derived. Labelled honestly in the
+ * Accounts table.
+ */
+function accountMovement(txns) {
+  var m = {};
   txns.forEach(function (t) {
-    if (!t.bal) return;
-    if (!last[t.ac] || t.d >= last[t.ac].d) last[t.ac] = t;
+    if (!m[t.ac]) m[t.ac] = { in: 0, out: 0, n: 0, first: t.d, last: t.d };
+    var a = m[t.ac];
+    a.in += t.cr; a.out += t.db; a.n++;
+    if (t.d < a.first) a.first = t.d;
+    if (t.d > a.last) a.last = t.d;
   });
-  return last;
+  return m;
 }
 
 /* =====================================================================
@@ -868,7 +876,8 @@ function filteredTxns() {
     if (STATE.tCat && t.c !== STATE.tCat) return false;
     if (STATE.tType && t.t !== STATE.tType) return false;
     if (STATE.tMonth && monthKey(t.d) !== STATE.tMonth) return false;
-    if (q && (t.ds + " " + t.c + " " + t.s + " " + t.m + " " + t.n).toLowerCase().indexOf(q) < 0) return false;
+    if (q && (t.ds + " " + t.c + " " + t.s + " " + t.m + " " + t.n + " " + (t.ref || ""))
+               .toLowerCase().indexOf(q) < 0) return false;
     return true;
   }).sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
 }
@@ -894,7 +903,7 @@ function renderTxns() {
 
   var html =
     '<div class="filters">' +
-      '<div class="f"><label for="t-q">Search</label><input id="t-q" type="text" placeholder="Merchant, description, note…" value="' + esc(STATE.tq) + '"></div>' +
+      '<div class="f"><label for="t-q">Search</label><input id="t-q" type="text" placeholder="Merchant, description, note, reference…" value="' + esc(STATE.tq) + '"></div>' +
       '<div class="f"><label for="t-month">Month</label><select id="t-month">' + monthOptions(idx.keys, STATE.tMonth, true) + '</select></div>' +
       '<div class="f"><label for="t-acct">Account</label><select id="t-acct">' + opts(acctList, STATE.tAcct, "All accounts") + '</select></div>' +
       '<div class="f"><label for="t-cat">Category</label><select id="t-cat">' + opts(catList, STATE.tCat, "All categories") + '</select></div>' +
@@ -919,7 +928,7 @@ function renderTxns() {
         ? '<div class="empty">Nothing matches those filters.</div>'
         : '<div class="tbl-scroll"><table><thead><tr>' +
           '<th>Date</th><th>Description</th><th>Category</th><th>Account</th>' +
-          '<th class="num">Out</th><th class="num">In</th><th class="num">Balance</th>' +
+          '<th class="num">Out</th><th class="num">In</th><th>Reference</th>' +
           '</tr></thead><tbody>' +
           shown.map(function (t) {
             return '<tr>' +
@@ -931,7 +940,8 @@ function renderTxns() {
               '<td style="white-space:nowrap">' + esc(t.ac) + '</td>' +
               '<td class="num">' + (t.db ? moneyExact(t.db) : '<span class="muted">—</span>') + '</td>' +
               '<td class="num">' + (t.cr ? '<span class="up">' + moneyExact(t.cr) + '</span>' : '<span class="muted">—</span>') + '</td>' +
-              '<td class="num muted">' + (t.bal ? money(t.bal) : "—") + '</td>' +
+              '<td class="muted" style="font-variant-numeric:tabular-nums;font-size:12.5px;white-space:nowrap">' +
+                (t.ref ? esc(t.ref) : "—") + '</td>' +
             '</tr>';
           }).join("") +
           '</tbody></table></div>' +
@@ -965,17 +975,19 @@ function renderTxns() {
 }
 
 function renderAssets() {
-  var bal = accountBalances(DATA.txns);
+  var mov = accountMovement(DATA.txns);
   var today = new Date().toISOString().slice(0, 10);
 
   var accHtml = DATA.accounts.map(function (a) {
-    var b = bal[a.name];
-    var isCard = /credit/i.test(a.type || "");
+    var m = mov[a.name];
+    var net = m ? m.in - m.out : 0;
     return '<tr>' +
       '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' + esc(a.bank) + " · " + esc(a.type) + '</div></td>' +
       '<td>' + esc(a.notes || "") + '</td>' +
-      '<td class="num">' + (b ? money(b.bal) : '<span class="muted">' + (isCard ? "card — see EMI below" : "no balance recorded") + '</span>') + '</td>' +
-      '<td class="num muted" style="font-size:12.5px">' + (b ? dayLabel(b.d) + " " + b.d.slice(0, 4) : "—") + '</td>' +
+      '<td class="num">' + (m ? '<span class="up">' + money(m.in) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (m ? money(m.out) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (m ? '<b class="' + (net >= 0 ? "up" : "down") + '">' + money(net) + '</b>' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num muted" style="font-size:12.5px">' + (m ? m.n : "—") + '</td>' +
     '</tr>';
   }).join("");
 
@@ -1035,8 +1047,12 @@ function renderAssets() {
         '<div class="sub">on file</div></div>' +
     '</div>' +
 
-    '<div class="card"><h2>Accounts</h2><p class="cap">Balance shown is the closing balance on the most recent transaction in the ledger.</p>' +
-      '<div class="tbl-scroll"><table><thead><tr><th>Account</th><th>Notes</th><th class="num">Balance</th><th class="num">As of</th></tr></thead>' +
+    '<div class="card"><h2>Accounts</h2>' +
+      '<p class="cap">Totals across the whole ledger. These are movements, not closing balances — ' +
+      'the spreadsheet records no opening balances, so a true balance cannot be worked out.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Account</th><th>Notes</th>' +
+      '<th class="num">Money in</th><th class="num">Money out</th><th class="num">Net movement</th>' +
+      '<th class="num">Txns</th></tr></thead>' +
       '<tbody>' + accHtml + '</tbody></table></div></div>' +
 
     '<div class="grid k2">' +
