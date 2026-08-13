@@ -996,16 +996,90 @@ function renderAssets() {
   var mov = accountMovement(DATA.txns);
   var today = new Date().toISOString().slice(0, 10);
 
-  var accHtml = DATA.accounts.map(function (a) {
+  function isCard(a) { return /credit/i.test(a.type || ""); }
+
+  /* Movement recorded after the date the stated balance applies to. */
+  function movementSince(name, since) {
+    var t = { in: 0, out: 0, n: 0 };
+    if (!since) return t;
+    DATA.txns.forEach(function (x) {
+      if (x.ac !== name || x.d <= since) return;
+      t.in += x.cr; t.out += x.db; t.n++;
+    });
+    return t;
+  }
+
+  var banks = DATA.accounts.filter(function (a) { return !isCard(a); });
+  var cards = DATA.accounts.filter(isCard);
+
+  var anyBalance = banks.some(function (a) { return a.balance !== null && a.balance !== undefined; });
+
+  var bankHtml = banks.map(function (a) {
     var m = mov[a.name];
-    var net = m ? m.in - m.out : 0;
+    var stated = (a.balance !== null && a.balance !== undefined);
+    var since = stated ? movementSince(a.name, a.balanceAsOf) : null;
+    var projected = stated ? a.balance + since.in - since.out : null;
+
     return '<tr>' +
-      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' + esc(a.bank) + " · " + esc(a.type) + '</div></td>' +
-      '<td>' + esc(a.notes || "") + '</td>' +
-      '<td class="num">' + (m ? '<span class="up">' + money(m.in) + '</span>' : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num">' + (m ? money(m.out) : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num">' + (m ? '<b class="' + (net >= 0 ? "up" : "down") + '">' + money(net) + '</b>' : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num muted" style="font-size:12.5px">' + (m ? m.n : "—") + '</td>' +
+      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' + esc(a.bank) + '</div></td>' +
+      '<td class="num">' + (stated
+        ? '<b>' + money(a.balance) + '</b><div class="muted" style="font-size:11.5px">' +
+          (a.balanceAsOf ? "as of " + dayLabel(a.balanceAsOf) + " " + a.balanceAsOf.slice(0, 4) : "no date given") + '</div>'
+        : '<span class="muted">not provided</span>') + '</td>' +
+      '<td class="num">' + (stated && a.balanceAsOf
+        ? (since.n
+            ? '<span class="' + (since.in - since.out >= 0 ? "up" : "down") + '">' + money(since.in - since.out) + '</span>' +
+              '<div class="muted" style="font-size:11.5px">' + since.n + ' txns</div>'
+            : '<span class="muted">none</span>')
+        : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (projected !== null
+        ? '<b>' + money(projected) + '</b>'
+        : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num muted" style="font-size:12.5px">' + (m ? dayLabel(m.last) + " " + m.last.slice(0, 4) : "—") + '</td>' +
+    '</tr>';
+  }).join("");
+
+  /* EMI still owed, per card, from the latest statement of each loan. */
+  var emiByCard = {};
+  DATA.emis.forEach(function (e) {
+    var k = String(e.card);
+    if (!emiByCard[k]) emiByCard[k] = { p: 0, i: 0, n: 0 };
+    emiByCard[k].p += e.balP; emiByCard[k].i += e.balI; emiByCard[k].n++;
+  });
+  /* Match on the account code (XX7339); card names like "HDFC.CC" hold no digits. */
+  function emiFor(a) {
+    var tail = String(a.code || a.name).replace(/\D/g, "").slice(-4);
+    if (!tail) return null;
+    for (var k in emiByCard) if (String(k).replace(/\D/g, "").slice(-4) === tail) return emiByCard[k];
+    return null;
+  }
+  function cardTxnCount(a) {
+    var tail = String(a.code || a.name).replace(/\D/g, "").slice(-4);
+    if (!tail) return 0;
+    return DATA.cc.filter(function (c) {
+      return String(c.card).replace(/\D/g, "").slice(-4) === tail;
+    }).length;
+  }
+
+  var cardHtml = cards.map(function (a) {
+    var e = emiFor(a);
+    var stated = (a.due !== null && a.due !== undefined);
+    return '<tr>' +
+      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' +
+        esc(a.code || "") + (a.notes ? " · " + esc(a.notes) : "") +
+        '<br>' + cardTxnCount(a) + ' card txns on file</div></td>' +
+      '<td class="num">' + (stated ? '<b>' + money(a.due) + '</b>' : '<span class="muted">not provided</span>') + '</td>' +
+      '<td class="num">' + (a.minDue !== null && a.minDue !== undefined ? money(a.minDue) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num muted" style="font-size:12.5px">' + (a.stmtDate ? dayLabel(a.stmtDate) + " " + a.stmtDate.slice(0, 4) : "—") + '</td>' +
+      '<td class="num">' + (a.dueDate
+        ? (a.dueDate < today
+            ? '<span class="pill bad">' + dayLabel(a.dueDate) + '</span>'
+            : '<span class="pill' + (Math.round((new Date(a.dueDate) - new Date(today)) / 86400000) <= 5 ? " warn" : "") + '">' +
+              dayLabel(a.dueDate) + '</span>')
+        : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (e && (e.p + e.i)
+        ? money(e.p + e.i) + '<div class="muted" style="font-size:11.5px">' + e.n + ' loans</div>'
+        : '<span class="muted">none</span>') + '</td>' +
     '</tr>';
   }).join("");
 
@@ -1113,13 +1187,24 @@ function renderAssets() {
         '<div class="sub">on file</div></div>' +
     '</div>' +
 
-    '<div class="card"><h2>Accounts</h2>' +
-      '<p class="cap">Totals across the whole ledger. These are movements, not closing balances — ' +
-      'the spreadsheet records no opening balances, so a true balance cannot be worked out.</p>' +
-      '<div class="tbl-scroll"><table><thead><tr><th>Account</th><th>Notes</th>' +
-      '<th class="num">Money in</th><th class="num">Money out</th><th class="num">Net movement</th>' +
-      '<th class="num">Txns</th></tr></thead>' +
-      '<tbody>' + accHtml + '</tbody></table></div></div>' +
+    '<div class="card"><h2>Bank accounts</h2>' +
+      '<p class="cap">' + (anyBalance
+        ? 'Balance as you stated it, plus everything recorded since, giving the balance now.'
+        : 'No balances have been entered yet. Add <b>Current Balance</b> and <b>Balance As Of</b> ' +
+          'columns to the Account Details sheet and they will appear here.') + '</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Account</th>' +
+      '<th class="num">Stated balance</th><th class="num">Movement since</th>' +
+      '<th class="num">Balance now</th><th class="num">Last txn</th></tr></thead>' +
+      '<tbody>' + bankHtml + '</tbody></table></div></div>' +
+
+    '<div class="card"><h2>Credit cards</h2>' +
+      '<p class="cap">Amount due comes from your card statement. Card spending is not in the ' +
+      'main ledger, so it cannot be worked out from transactions.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Card</th>' +
+      '<th class="num">Amount due</th><th class="num">Minimum due</th>' +
+      '<th class="num">Statement</th><th class="num">Due date</th>' +
+      '<th class="num">EMI outstanding</th></tr></thead>' +
+      '<tbody>' + cardHtml + '</tbody></table></div></div>' +
 
     '<div class="grid k2">' +
       '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>' +
