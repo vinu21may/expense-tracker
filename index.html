@@ -1028,7 +1028,8 @@ function renderAssets() {
     var matured = f.maturity && f.maturity < today;
     var days = f.maturity ? Math.round((new Date(f.maturity) - new Date(today)) / 86400000) : null;
     return '<tr>' +
-      '<td><b>' + esc(f.id) + '</b><div class="muted" style="font-size:12px">' + f.rate + '% p.a.</div></td>' +
+      '<td><b>' + esc(f.id) + '</b><div class="muted" style="font-size:12px">' +
+        (f.bank ? esc(f.bank) + " · " : "") + f.rate + '% p.a.</div></td>' +
       '<td class="num">' + money(f.principal) + '</td>' +
       '<td class="num">' + money(f.matAmt) + '<div class="muted" style="font-size:12px">+' + money(f.interest) + '</div></td>' +
       '<td>' + (f.maturity ? dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "—") + '</td>' +
