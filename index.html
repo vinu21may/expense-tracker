@@ -141,7 +141,9 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .card p.cap { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
 .grid { display: grid; gap: 16px; }
 @media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } }
-@media (max-width: 699px)  { .grid.k4 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 699px)  { .grid.k4, .grid.k5 { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 700px) and (max-width: 1039px) { .grid.k5 { grid-template-columns: repeat(3,1fr); } }
+@media (min-width: 1040px) { .grid.k5 { grid-template-columns: repeat(5,1fr); } }
 @media (min-width: 1000px) { .grid.split { grid-template-columns: 1.35fr 1fr; align-items: start; } }
 
 /* ------------------------------------------------------------ stat tiles */
@@ -1019,6 +1021,27 @@ function renderAssets() {
     '</tr>';
   }).join("") : "";
 
+  // Older data.json files predate the Investments sheet, so this may be absent.
+  var invs = DATA.investments || [];
+  var invValue = invs.reduce(function (s, i) { return s + i.value; }, 0);
+  var invCost  = invs.reduce(function (s, i) { return s + i.invested; }, 0);
+  var invGain  = invValue - invCost;
+  var invHtml = invs.length ? invs.map(function (i) {
+    var up = i.gain >= 0;
+    return '<tr>' +
+      '<td><b>' + esc(i.name) + '</b><div class="muted" style="font-size:12px">' +
+        esc(i.kind) + (i.provider ? " · " + esc(i.provider) : "") + '</div></td>' +
+      '<td class="num">' + money(i.invested) + '</td>' +
+      '<td class="num">' + money(i.value) +
+        '<div class="muted" style="font-size:12px">' +
+        (i.valued ? "as at " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "—") +
+        '</div></td>' +
+      '<td class="num"><b class="' + (up ? "up" : "down") + '">' + (up ? "+" : "") + money(i.gain) + '</b>' +
+        '<div class="muted" style="font-size:12px">' + (up ? "+" : "") + i.gainPct.toFixed(1) + '%</div></td>' +
+      '<td>' + (i.matures ? dayLabel(i.matures) + " " + i.matures.slice(0, 4) : "—") + '</td>' +
+    '</tr>';
+  }).join("") : "";
+
   var emiP = DATA.emis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = DATA.emis.reduce(function (s, e) { return s + e.balI; }, 0);
   var emiHtml = DATA.emis.length ? DATA.emis.map(function (e) {
@@ -1032,9 +1055,13 @@ function renderAssets() {
   }).join("") : "";
 
   el("tab-assets").innerHTML =
-    '<div class="grid k4" style="margin-bottom:16px">' +
+    '<div class="grid k5" style="margin-bottom:16px">' +
       '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
         '<div class="sub">' + DATA.fds.length + ' deposits · ' + money(fdInt) + ' interest due</div></div>' +
+      '<div class="tile"><div class="lbl">Investments value</div><div class="val">' + money(invValue) + '</div>' +
+        '<div class="sub">' + (invs.length
+          ? '<span class="' + (invGain >= 0 ? "up" : "down") + '">' + (invGain >= 0 ? "+" : "") + money(invGain) + '</span> on ' + money(invCost)
+          : 'none tracked') + '</div></div>' +
       '<div class="tile"><div class="lbl">Loan outstanding</div><div class="val">' + money(emiP + emiI) + '</div>' +
         '<div class="sub">' + DATA.emis.length + ' active EMI loans</div></div>' +
       '<div class="tile"><div class="lbl">Goals progress</div><div class="val">' +
@@ -1062,6 +1089,16 @@ function renderAssets() {
           ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
           : '<div class="empty">No fixed deposits.</div>') +
       '</div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Investments</h2>' +
+      '<p class="cap">Market-linked holdings, valued at a date rather than promised at maturity — ' +
+      'the value moves, so these figures are only as current as the statement they came from.</p>' +
+      (invHtml
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Holding</th><th class="num">Invested</th>' +
+          '<th class="num">Value now</th><th class="num">Gain</th><th>Matures</th></tr></thead>' +
+          '<tbody>' + invHtml + '</tbody></table></div>'
+        : '<div class="empty">No investments tracked.</div>') +
     '</div>' +
 
     '<div class="card"><h2>Credit card EMI loans</h2>' +
