@@ -140,6 +140,10 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 .card p.cap { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
 .grid { display: grid; gap: 16px; }
+/* A grid item defaults to min-width:auto, so it refuses to shrink below its
+   own content: a card holding a wide table then pushed the whole page sideways
+   on a phone instead of letting the table scroll inside its own box. */
+.grid > * { min-width: 0; }
 @media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } }
 @media (max-width: 699px)  { .grid.k4, .grid.k5 { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 700px) and (max-width: 1039px) { .grid.k5 { grid-template-columns: repeat(3,1fr); } }
