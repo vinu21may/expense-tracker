@@ -217,6 +217,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .seg button + button { border-left: 1px solid var(--border); }
 
 /* -------------------------------------------------------------- progress */
+.pol + .pol { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+.pol-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.pol-head .p-name { font-weight: 600; }
+.pol-head .p-meta { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+/* label/value pairs: two columns where there is room, stacked when there is not */
+.pol-fields { display: grid; gap: 2px 24px; margin: 9px 0 0; font-size: 13.5px; }
+@media (min-width: 620px) { .pol-fields { grid-template-columns: 1fr 1fr; } }
+.pol-fields > div { display: grid; grid-template-columns: 116px 1fr; gap: 8px; padding: 2px 0; }
+.pol-fields dt { color: var(--muted); font-size: 12.5px; }
+.pol-fields dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .goal + .goal { margin-top: 18px; }
 .goal-head { display: flex; align-items: baseline; gap: 10px; font-size: 14px; margin-bottom: 8px; }
 .goal-head .g-name { font-weight: 600; }
@@ -1148,25 +1158,42 @@ function renderAssets() {
     var d = Math.round((new Date(p.renewal) - new Date(today)) / 86400000);
     return d <= 45;
   }).length;
+  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
+
   var polHtml = pols.length ? pols.map(function (p) {
     var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
     // no renewal date means the policy just runs on (monthly term premium, the
-    // half-yearly ULIP) — the Renews column already says how, so don't echo it
+    // half-yearly ULIP) — Cover Period already says how, so don't echo it
     var status = days === null
       ? '<span class="pill ok">ongoing</span>'
       : days < 0 ? '<span class="pill warn">expired</span>'
       : '<span class="pill' + (days <= 45 ? " warn" : "") + '">' + days + ' days</span>';
-    return '<tr>' +
-      '<td><b>' + esc(p.name) + '</b><div class="muted" style="font-size:12px">' +
-        esc(p.kind) + (p.insurer ? " · " + esc(p.insurer) : "") +
-        (p.covers ? '<br>' + esc(p.covers) : "") + '</div></td>' +
-      '<td class="num">' + (p.sum === null ? "—" : money(p.sum)) + '</td>' +
-      '<td class="num">' + money(p.premium) +
-        (p.paidFrom ? '<div class="muted" style="font-size:12px">' + esc(p.paidFrom) + '</div>' : "") + '</td>' +
-      '<td>' + (p.renewal ? dayLabel(p.renewal) + " " + p.renewal.slice(0, 4)
-                          : esc(p.renewalText || "—")) + '</td>' +
-      '<td>' + status + '</td>' +
-    '</tr>';
+
+    // a policy that renews on a date has a period with two ends; one that just
+    // runs on has a start and a rhythm, so say the rhythm rather than invent an end
+    var period = p.renewal && p.start ? longDate(p.start) + " → " + longDate(p.renewal)
+      : p.renewal ? "to " + longDate(p.renewal)
+      : p.start ? "from " + longDate(p.start) +
+                  (p.renewalText ? " · renews " + esc(p.renewalText) : "")
+      : esc(p.renewalText || "—");
+
+    function field(label, value) {
+      return '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
+    }
+
+    return '<div class="pol">' +
+      '<div class="pol-head"><span class="p-name">' + esc(p.name) + '</span>' + status +
+        '<span class="p-meta">' + esc(p.kind) +
+        (p.insurer ? " · " + esc(p.insurer) : "") + '</span></div>' +
+      '<dl class="pol-fields">' +
+        field("Covers", p.covers ? esc(p.covers) : '<span class="muted">not stated</span>') +
+        field("Sum Insured", p.sum === null
+          ? '<span class="muted">not stated</span>' : '<b>' + money(p.sum) + '</b>') +
+        field("Annual Premium", money(p.premium) +
+          (p.paidFrom ? ' <span class="muted">· ' + esc(p.paidFrom) + '</span>' : "")) +
+        field("Cover Period", period) +
+      '</dl>' +
+    '</div>';
   }).join("") : "";
 
   // Fixed deposits at principal rather than maturity value, so the total is
@@ -1266,11 +1293,7 @@ function renderAssets() {
       'it counts towards the totals above — and the premiums are already in your spending, ' +
       'so nothing here is a second record of them. ' + money(polPrem) + ' of premium a year' +
       (polSoon ? ', <b>' + polSoon + ' renewing within 45 days</b>' : '') + '.</p>' +
-      (polHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>Policy</th><th class="num">Sum insured</th>' +
-          '<th class="num">Premium a year</th><th>Renews</th><th>Status</th></tr></thead>' +
-          '<tbody>' + polHtml + '</tbody></table></div>'
-        : '<div class="empty">No policies tracked.</div>') +
+      (polHtml || '<div class="empty">No policies tracked.</div>') +
     '</div>' +
 
     '<div class="card"><h2>Credit card EMI loans</h2>' +
