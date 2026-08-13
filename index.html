@@ -1133,6 +1133,42 @@ function renderAssets() {
     '</tr>';
   }).join("") : "";
 
+  // Insurance is cover, not capital: it stays out of every asset total below.
+  // Older data.json files predate the Insurance Policies sheet.
+  var pols = (DATA.insurance || []).slice().sort(function (a, b) {
+    // soonest real renewal first; the ones with no renewal date sink to the end
+    if (!a.renewal && !b.renewal) return a.name.localeCompare(b.name);
+    if (!a.renewal) return 1;
+    if (!b.renewal) return -1;
+    return a.renewal < b.renewal ? -1 : a.renewal > b.renewal ? 1 : 0;
+  });
+  var polPrem = pols.reduce(function (s, p) { return s + p.premium; }, 0);
+  var polSoon = pols.filter(function (p) {
+    if (!p.renewal) return false;
+    var d = Math.round((new Date(p.renewal) - new Date(today)) / 86400000);
+    return d <= 45;
+  }).length;
+  var polHtml = pols.length ? pols.map(function (p) {
+    var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
+    // no renewal date means the policy just runs on (monthly term premium, the
+    // half-yearly ULIP) — the Renews column already says how, so don't echo it
+    var status = days === null
+      ? '<span class="pill ok">ongoing</span>'
+      : days < 0 ? '<span class="pill warn">expired</span>'
+      : '<span class="pill' + (days <= 45 ? " warn" : "") + '">' + days + ' days</span>';
+    return '<tr>' +
+      '<td><b>' + esc(p.name) + '</b><div class="muted" style="font-size:12px">' +
+        esc(p.kind) + (p.insurer ? " · " + esc(p.insurer) : "") +
+        (p.covers ? '<br>' + esc(p.covers) : "") + '</div></td>' +
+      '<td class="num">' + (p.sum === null ? "—" : money(p.sum)) + '</td>' +
+      '<td class="num">' + money(p.premium) +
+        (p.paidFrom ? '<div class="muted" style="font-size:12px">' + esc(p.paidFrom) + '</div>' : "") + '</td>' +
+      '<td>' + (p.renewal ? dayLabel(p.renewal) + " " + p.renewal.slice(0, 4)
+                          : esc(p.renewalText || "—")) + '</td>' +
+      '<td>' + status + '</td>' +
+    '</tr>';
+  }).join("") : "";
+
   // Fixed deposits at principal rather than maturity value, so the total is
   // money actually put in rather than money hoped for.
   var goalSaved = DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0);
@@ -1223,6 +1259,18 @@ function renderAssets() {
           '<th class="num">Value now</th><th class="num">Gain</th><th>Matures</th></tr></thead>' +
           '<tbody>' + invHtml + '</tbody></table></div>'
         : '<div class="empty">No investments tracked.</div>') +
+    '</div>' +
+
+    '<div class="card"><h2>Insurance cover</h2>' +
+      '<p class="cap">What is covered and when it lapses. This is not money you hold, so none of ' +
+      'it counts towards the totals above — and the premiums are already in your spending, ' +
+      'so nothing here is a second record of them. ' + money(polPrem) + ' of premium a year' +
+      (polSoon ? ', <b>' + polSoon + ' renewing within 45 days</b>' : '') + '.</p>' +
+      (polHtml
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Policy</th><th class="num">Sum insured</th>' +
+          '<th class="num">Premium a year</th><th>Renews</th><th>Status</th></tr></thead>' +
+          '<tbody>' + polHtml + '</tbody></table></div>'
+        : '<div class="empty">No policies tracked.</div>') +
     '</div>' +
 
     '<div class="card"><h2>Credit card EMI loans</h2>' +
