@@ -276,6 +276,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Accounts &amp; Assets</button>
+      <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
+      <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
     </nav>
   </header>
   <main>
@@ -283,6 +285,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-spending" class="hide"></section>
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
+    <section id="tab-insurance" class="hide"></section>
+    <section id="tab-amma"      class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
 </div>
@@ -1147,59 +1151,6 @@ function renderAssets() {
     '</tr>';
   }).join("") : "";
 
-  // Insurance is cover, not capital: it stays out of every asset total below.
-  // Older data.json files predate the Insurance Policies sheet.
-  var pols = (DATA.insurance || []).slice().sort(function (a, b) {
-    // soonest real renewal first; the ones with no renewal date sink to the end
-    if (!a.renewal && !b.renewal) return a.name.localeCompare(b.name);
-    if (!a.renewal) return 1;
-    if (!b.renewal) return -1;
-    return a.renewal < b.renewal ? -1 : a.renewal > b.renewal ? 1 : 0;
-  });
-  var polPrem = pols.reduce(function (s, p) { return s + p.premium; }, 0);
-  var polSoon = pols.filter(function (p) {
-    if (!p.renewal) return false;
-    var d = Math.round((new Date(p.renewal) - new Date(today)) / 86400000);
-    return d <= 45;
-  }).length;
-  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
-
-  var polHtml = pols.length ? pols.map(function (p) {
-    var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
-    // no renewal date means the policy just runs on (monthly term premium, the
-    // half-yearly ULIP) — Cover Period already says how, so don't echo it
-    var status = days === null
-      ? '<span class="pill ok">ongoing</span>'
-      : days < 0 ? '<span class="pill warn">expired</span>'
-      : '<span class="pill' + (days <= 45 ? " warn" : "") + '">' + days + ' days</span>';
-
-    // a policy that renews on a date has a period with two ends; one that just
-    // runs on has a start and a rhythm, so say the rhythm rather than invent an end
-    var period = p.renewal && p.start ? longDate(p.start) + " → " + longDate(p.renewal)
-      : p.renewal ? "to " + longDate(p.renewal)
-      : p.start ? "from " + longDate(p.start) +
-                  (p.renewalText ? " · renews " + esc(p.renewalText) : "")
-      : esc(p.renewalText || "—");
-
-    function field(label, value) {
-      return '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
-    }
-
-    return '<div class="pol">' +
-      '<div class="pol-head"><span class="p-name">' + esc(p.name) + '</span>' + status +
-        '<span class="p-meta">' + esc(p.kind) +
-        (p.insurer ? " · " + esc(p.insurer) : "") + '</span></div>' +
-      '<dl class="pol-fields">' +
-        field("Covers", p.covers ? esc(p.covers) : '<span class="muted">not stated</span>') +
-        field("Sum Insured", p.sum === null
-          ? '<span class="muted">not stated</span>' : '<b>' + money(p.sum) + '</b>') +
-        field("Annual Premium", money(p.premium) +
-          (p.paidFrom ? ' <span class="muted">· ' + esc(p.paidFrom) + '</span>' : "")) +
-        field("Cover Period", period) +
-      '</dl>' +
-    '</div>';
-  }).join("") : "";
-
   // Fixed deposits at principal rather than maturity value, so the total is
   // money actually put in rather than money hoped for.
   var goalSaved = DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0);
@@ -1292,19 +1243,140 @@ function renderAssets() {
         : '<div class="empty">No investments tracked.</div>') +
     '</div>' +
 
-    '<div class="card"><h2>Insurance cover</h2>' +
-      '<p class="cap">What is covered and when it lapses. This is not money you hold, so none of ' +
-      'it counts towards the totals above — and the premiums are already in your spending, ' +
-      'so nothing here is a second record of them. ' + money(polPrem) + ' of premium a year' +
-      (polSoon ? ', <b>' + polSoon + ' renewing within 45 days</b>' : '') + '.</p>' +
-      (polHtml || '<div class="empty">No policies tracked.</div>') +
-    '</div>' +
-
     '<div class="card"><h2>Credit card EMI loans</h2>' +
       '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
       (emiHtml
         ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
         : '<div class="empty">No active EMI loans.</div>') +
+    '</div>';
+}
+
+function renderInsurance() {
+  var today = new Date().toISOString().slice(0, 10);
+
+  // Insurance is cover, not capital: it stays out of every asset total below.
+  // Older data.json files predate the Insurance Policies sheet.
+  var pols = (DATA.insurance || []).slice().sort(function (a, b) {
+    // soonest real renewal first; the ones with no renewal date sink to the end
+    if (!a.renewal && !b.renewal) return a.name.localeCompare(b.name);
+    if (!a.renewal) return 1;
+    if (!b.renewal) return -1;
+    return a.renewal < b.renewal ? -1 : a.renewal > b.renewal ? 1 : 0;
+  });
+  var polPrem = pols.reduce(function (s, p) { return s + p.premium; }, 0);
+  var polSoon = pols.filter(function (p) {
+    if (!p.renewal) return false;
+    var d = Math.round((new Date(p.renewal) - new Date(today)) / 86400000);
+    return d <= 45;
+  }).length;
+  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
+
+  var polHtml = pols.length ? pols.map(function (p) {
+    var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
+    // no renewal date means the policy just runs on (monthly term premium, the
+    // half-yearly ULIP) — Cover Period already says how, so don't echo it
+    var status = days === null
+      ? '<span class="pill ok">ongoing</span>'
+      : days < 0 ? '<span class="pill warn">expired</span>'
+      : '<span class="pill' + (days <= 45 ? " warn" : "") + '">' + days + ' days</span>';
+
+    // a policy that renews on a date has a period with two ends; one that just
+    // runs on has a start and a rhythm, so say the rhythm rather than invent an end
+    var period = p.renewal && p.start ? longDate(p.start) + " → " + longDate(p.renewal)
+      : p.renewal ? "to " + longDate(p.renewal)
+      : p.start ? "from " + longDate(p.start) +
+                  (p.renewalText ? " · renews " + esc(p.renewalText) : "")
+      : esc(p.renewalText || "—");
+
+    function field(label, value) {
+      return '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
+    }
+
+    return '<div class="pol">' +
+      '<div class="pol-head"><span class="p-name">' + esc(p.name) + '</span>' + status +
+        '<span class="p-meta">' + esc(p.kind) +
+        (p.insurer ? " · " + esc(p.insurer) : "") + '</span></div>' +
+      '<dl class="pol-fields">' +
+        field("Covers", p.covers ? esc(p.covers) : '<span class="muted">not stated</span>') +
+        field("Sum Insured", p.sum === null
+          ? '<span class="muted">not stated</span>' : '<b>' + money(p.sum) + '</b>') +
+        field("Annual Premium", money(p.premium) +
+          (p.paidFrom ? ' <span class="muted">· ' + esc(p.paidFrom) + '</span>' : "")) +
+        field("Cover Period", period) +
+      '</dl>' +
+    '</div>';
+  }).join("") : "";
+
+  var expired = pols.filter(function (p) {
+    return p.renewal && p.renewal < today;
+  }).length;
+
+  el("tab-insurance").innerHTML =
+    '<div class="grid k5" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Policies in force</div><div class="val">' + pols.length + '</div>' +
+        '<div class="sub">' + (expired ? expired + ' expired' : 'none expired') + '</div></div>' +
+      '<div class="tile"><div class="lbl">Premium a year</div><div class="val">' + money(polPrem) + '</div>' +
+        '<div class="sub">across all policies</div></div>' +
+      '<div class="tile"><div class="lbl">Renewing soon</div><div class="val">' + polSoon + '</div>' +
+        '<div class="sub">within 45 days</div></div>' +
+    '</div>' +
+
+        '<div class="card"><h2>Insurance cover</h2>' +
+      '<p class="cap">What is covered and when it lapses. This is cover, not money you hold, so it counts towards no asset total — and the premiums are already in your spending, so nothing here is a second record of them.</p>' +
+      (polHtml || '<div class="empty">No policies tracked.</div>') +
+    '</div>';
+}
+
+/* Money fronted for Amma and repaid over the following months. Both legs are
+   tagged Transfer / Amma Receivable in the spreadsheet and excluded from the
+   charts, so they appear nowhere else in this app -- which is exactly why this
+   tab exists: without it the arrangement is invisible. */
+function renderAmma() {
+  var rows = DATA.txns.filter(function (t) { return t.s === "Amma Receivable"; })
+                      .slice()
+                      .sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
+
+  var paid   = rows.reduce(function (s, t) { return s + t.db; }, 0);
+  var repaid = rows.reduce(function (s, t) { return s + t.cr; }, 0);
+  var out    = paid - repaid;
+  var owed   = out >= 0;
+
+  var body = rows.length ? rows.map(function (t) {
+    var isPaid = t.db > 0;
+    return '<tr>' +
+      '<td>' + dayLabel(t.d) + ' ' + t.d.slice(0, 4) + '</td>' +
+      '<td>' + esc(t.ds) + (t.n ? '<div class="muted" style="font-size:12px">' + esc(t.n) + '</div>' : '') + '</td>' +
+      '<td class="num">' + (isPaid ? money(t.db) : '') + '</td>' +
+      '<td class="num">' + (isPaid ? '' : money(t.cr)) + '</td>' +
+    '</tr>';
+  }).join("") : "";
+
+  el("tab-amma").innerHTML =
+    '<div class="card"><div class="total">' +
+      '<div class="headline"><div class="lbl">' + (owed ? 'She owes' : 'She is ahead by') + '</div>' +
+        '<div class="val">' + money(Math.abs(out)) + '</div></div>' +
+      '<div class="parts">' +
+        '<div class="part"><div class="p-lbl">Paid on her behalf</div>' +
+          '<div class="p-val">' + money(paid) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">Repaid by her</div>' +
+          '<div class="p-val">' + money(repaid) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<p class="cap" style="margin:14px 0 0">' +
+      (owed
+        ? 'What you have fronted, less what she has sent back.'
+        : 'She has sent back more than the spending tagged so far. That usually means bills ' +
+          'she has reimbursed are not yet tagged in the spreadsheet rather than that she has overpaid.') +
+      ' None of this counts as your income or your expense, so it appears on no other tab.</p>' +
+    '</div>' +
+
+    '<div class="card"><h2>Every tagged transaction</h2>' +
+      '<p class="cap">' + rows.length + ' rows, newest first.</p>' +
+      (body
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Date</th><th>Description</th>' +
+          '<th class="num">Paid out</th><th class="num">Repaid</th></tr></thead>' +
+          '<tbody>' + body + '</tbody></table></div>'
+        : '<div class="empty">Nothing tagged yet.</div>') +
     '</div>';
 }
 
@@ -1317,13 +1389,15 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "spending", "txns", "assets"].forEach(function (t) {
+  ["overview", "spending", "txns", "assets", "insurance", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
   if (name === "spending") renderSpending();
   if (name === "txns")     renderTxns();
   if (name === "assets")   renderAssets();
+  if (name === "insurance") renderInsurance();
+  if (name === "amma")      renderAmma();
   window.scrollTo(0, 0);
 }
 
