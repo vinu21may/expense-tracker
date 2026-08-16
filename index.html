@@ -1153,8 +1153,26 @@ function renderAssets() {
 
   // Fixed deposits at principal rather than maturity value, so the total is
   // money actually put in rather than money hoped for.
-  var goalSaved = DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0);
-  var totalInvested = fdTotal + invValue + goalSaved;
+  //
+  // Savings balances replaced "goals set aside" here. Goal money is not a
+  // separate pot -- it sits in an account already counted, so adding it
+  // double-counted. A savings balance is real money that is genuinely yours.
+  //
+  // Only STATED balances count. A balance cannot be derived from opening
+  // balance plus ledger movement: for HDFC-3245 that arithmetic gives 7,04,025
+  // against a real 5,79,797, because the ledger carries entries that never
+  // touched the bank (cash, opening balances, the net-share row of a split
+  // bill). An account with no stated balance is left out of the total and
+  // called out below, rather than being guessed at.
+  var savingsAccts = banks.map(function (a) {
+    var stated = (a.balance !== null && a.balance !== undefined);
+    if (!stated) return { name: a.name, known: false, value: 0 };
+    var since = movementSince(a.name, a.balanceAsOf);
+    return { name: a.name, known: true, value: a.balance + since.in - since.out };
+  });
+  var savingsTotal = savingsAccts.reduce(function (s, a) { return s + a.value; }, 0);
+  var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
+  var totalInvested = fdTotal + invValue + savingsTotal;
 
   var emiP = DATA.emis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = DATA.emis.reduce(function (s, e) { return s + e.balI; }, 0);
@@ -1177,13 +1195,19 @@ function renderAssets() {
           '<div class="p-val">' + money(fdTotal) + '</div></div>' +
         '<div class="part"><div class="p-lbl">Investments</div>' +
           '<div class="p-val">' + money(invValue) + '</div></div>' +
-        '<div class="part"><div class="p-lbl">Goals set aside</div>' +
-          '<div class="p-val' + (goalSaved ? '' : ' muted-val') + '">' + money(goalSaved) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">In savings accounts</div>' +
+          '<div class="p-val' + (savingsTotal ? '' : ' muted-val') + '">' + money(savingsTotal) + '</div></div>' +
       '</div>' +
     '</div>' +
     '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal, investments at their last stated value, ' +
-      'and what you have set aside against goals. Goals money usually sits in an account you already hold, ' +
-      'so it may be counted here twice — treat the total as an upper bound.</p>' +
+      'and savings at the balance you last recorded, adjusted for anything the ledger has seen since.' +
+      (savingsMissing.length
+        ? ' <b>' + savingsMissing.map(function (a) { return esc(a.name); }).join(" and ") +
+          (savingsMissing.length > 1 ? ' have ' : ' has ') +
+          'no balance recorded yet, so ' + (savingsMissing.length > 1 ? 'they are' : 'it is') +
+          ' not in this total.</b>'
+        : '') +
+      '</p>' +
     '</div>' +
 
     '<div class="grid k5" style="margin-bottom:16px">' +
