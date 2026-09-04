@@ -95,6 +95,7 @@ input[type=text], input[type=password], select {
   min-height: 44px;
 }
 input:focus, select:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+select:disabled { color: var(--muted); background: var(--surface-1); cursor: not-allowed; opacity: 1; }
 button {
   font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
   border: 1px solid var(--border); border-radius: 10px;
@@ -759,7 +760,7 @@ function chartNet(container, keys, map, fit) {
    ===================================================================== */
 
 var STATE = { tab: "overview", month: null, spendScope: "month", spendCat: null, fitScale: true,
-              tq: "", tAcct: "", tCat: "", tType: "", tMonth: "", tLimit: 200 };
+              tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200 };
 
 function monthOptions(keys, sel, includeAll, allLabel) {
   var o = includeAll ? '<option value="">' + (allLabel || "All time") + '</option>' : "";
@@ -915,6 +916,7 @@ function filteredTxns() {
   return DATA.txns.filter(function (t) {
     if (STATE.tAcct && t.ac !== STATE.tAcct) return false;
     if (STATE.tCat && t.c !== STATE.tCat) return false;
+    if (STATE.tSub && t.s !== STATE.tSub) return false;
     if (STATE.tType && t.t !== STATE.tType) return false;
     if (STATE.tMonth && monthKey(t.d) !== STATE.tMonth) return false;
     if (q && (t.ds + " " + t.c + " " + t.s + " " + t.m + " " + t.n + " " + (t.ref || ""))
@@ -929,6 +931,19 @@ function renderTxns() {
   DATA.txns.forEach(function (t) { accts[t.ac] = 1; cats[t.c] = 1; });
   var acctList = Object.keys(accts).sort();
   var catList = Object.keys(cats).sort();
+
+  /*
+   * Sub-categories depend on the chosen category: the same sub-category name
+   * can appear under several categories, so an unscoped list would be
+   * ambiguous. With no category picked the select is disabled rather than
+   * hidden, so the row of filters does not jump about as you use it.
+   */
+  var subSet = {};
+  if (STATE.tCat) {
+    DATA.txns.forEach(function (t) { if (t.c === STATE.tCat && t.s) subSet[t.s] = 1; });
+  }
+  var subList = Object.keys(subSet).sort();
+  if (STATE.tSub && subList.indexOf(STATE.tSub) < 0) STATE.tSub = "";
 
   var rows = filteredTxns();
   var shown = rows.slice(0, STATE.tLimit);
@@ -948,6 +963,10 @@ function renderTxns() {
       '<div class="f"><label for="t-month">Month</label><select id="t-month">' + monthOptions(idx.keys, STATE.tMonth, true) + '</select></div>' +
       '<div class="f"><label for="t-acct">Account</label><select id="t-acct">' + opts(acctList, STATE.tAcct, "All accounts") + '</select></div>' +
       '<div class="f"><label for="t-cat">Category</label><select id="t-cat">' + opts(catList, STATE.tCat, "All categories") + '</select></div>' +
+      '<div class="f"><label for="t-sub">Sub-category</label><select id="t-sub"' + (STATE.tCat ? "" : " disabled") + '>' +
+        (STATE.tCat
+          ? opts(subList, STATE.tSub, "All sub-categories")
+          : '<option value="">Pick a category first</option>') + '</select></div>' +
       '<div class="f"><label for="t-type">Type</label><select id="t-type">' + opts(["Expense","Income","Savings","Transfer"], STATE.tType, "All types") + '</select></div>' +
       '<div class="f"><label>&nbsp;</label><button id="t-clear">Clear</button></div>' +
     '</div>' +
@@ -1004,12 +1023,17 @@ function renderTxns() {
       var f = el("t-q"); f.focus(); f.setSelectionRange(f.value.length, f.value.length);
     }, 250);
   });
-  ["t-month:tMonth", "t-acct:tAcct", "t-cat:tCat", "t-type:tType"].forEach(function (pair) {
+  ["t-month:tMonth", "t-acct:tAcct", "t-sub:tSub", "t-type:tType"].forEach(function (pair) {
     var p = pair.split(":");
     el(p[0]).addEventListener("change", function () { STATE[p[1]] = this.value; STATE.tLimit = 200; renderTxns(); });
   });
+  // Changing the category invalidates whatever sub-category was chosen under it.
+  el("t-cat").addEventListener("change", function () {
+    STATE.tCat = this.value; STATE.tSub = ""; STATE.tLimit = 200; renderTxns();
+  });
   el("t-clear").addEventListener("click", function () {
-    STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = ""; STATE.tType = ""; STATE.tMonth = ""; STATE.tLimit = 200; renderTxns();
+    STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = ""; STATE.tSub = "";
+    STATE.tType = ""; STATE.tMonth = ""; STATE.tLimit = 200; renderTxns();
   });
   var more = el("t-more");
   if (more) more.addEventListener("click", function () { STATE.tLimit += 200; renderTxns(); });
