@@ -423,6 +423,18 @@ function subCategoryTotals(txns, cat, monthK) {
                          .sort(function (a, b) { return b.value - a.value; });
 }
 
+/* Month-by-month spend for one sub-category, across the whole ledger. */
+function subMonthlyTotals(txns, cat, sub, keys) {
+  var map = {};
+  keys.forEach(function (k) { map[k] = 0; });
+  txns.forEach(function (t) {
+    if (!charted(t) || t.t !== "Expense" || t.c !== cat || t.s !== sub) return;
+    var k = monthKey(t.d);
+    if (k in map) map[k] += t.db;
+  });
+  return keys.map(function (k) { return map[k]; });
+}
+
 /*
  * Net movement per account: everything in, minus everything out, across the
  * whole ledger. This is NOT a closing balance — the sheet's opening balances
@@ -643,7 +655,7 @@ function chartIncomeExpense(container, keys, map, fit) {
  * measure, so it takes one sequential hue rather than categorical colours.
  * Values are direct-labelled, which also satisfies the contrast relief rule.
  */
-function chartCategories(container, rows, total, onPick) {
+function chartCategories(container, rows, total, onPick, highlight) {
   if (!rows.length) { container.innerHTML = '<div class="empty">No spending recorded in this period.</div>'; return; }
 
   var shown = rows.slice(0, 12);
@@ -667,9 +679,16 @@ function chartCategories(container, rows, total, onPick) {
     var colour = ramp[Math.min(ramp.length - 1, Math.floor(i / Math.max(1, shown.length / ramp.length)))];
     var pct = total > 0 ? (r.value / total * 100) : 0;
 
+    // The picked row is marked by a caret and weight as well as colour, so it
+    // never depends on colour alone to be identifiable.
+    var picked = highlight && r.name === highlight;
+    if (picked) colour = "var(--series-2)";
+
     var label = r.name.length > 24 ? r.name.slice(0, 23) + "…" : r.name;
-    s += '<text x="' + (PL - 12) + '" y="' + (by + 12) + '" text-anchor="end" font-size="12.5" fill="var(--text-secondary)">' +
-         esc(label) + '</text>';
+    s += '<text x="' + (PL - 12) + '" y="' + (by + 12) + '" text-anchor="end" font-size="12.5" fill="' +
+         (picked ? "var(--text-primary)" : "var(--text-secondary)") + '"' +
+         (picked ? ' font-weight="700"' : "") + '>' +
+         esc(picked ? "▸ " + label : label) + '</text>';
     s += '<path d="' + barRight(PL, by, w, bh, 4) + '" fill="' + colour + '"/>';
     s += '<text x="' + (PL + w + 10) + '" y="' + (by + 12) + '" font-size="12.5" fill="var(--text-primary)" font-variant-numeric="tabular-nums">' +
          moneyShort(r.value) + '</text>';
@@ -695,6 +714,56 @@ function chartCategories(container, rows, total, onPick) {
       n.addEventListener("click", function () { onPick(n.getAttribute("data-cat")); });
     });
   }
+}
+
+/* One sub-category's spend, month by month. Single series, so no legend. */
+function chartSubTrend(container, keys, vals, label) {
+  if (!keys.length) { container.innerHTML = '<div class="empty">No months to chart.</div>'; return; }
+
+  var W = 760, H = 186, PL = 62, PR = 12, PT = 20, PB = 42;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var top = niceMax(Math.max.apply(null, vals.concat([0])));
+  var band = iw / keys.length;
+  var bw = Math.max(3, Math.min(26, band - 8));
+
+  var s = "";
+  for (var g = 0; g <= 3; g++) {
+    var v = top * g / 3, y = PT + ih - (v / top) * ih;
+    s += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y +
+         '" stroke="var(--grid)" stroke-width="1"/>' +
+         '<text x="' + (PL - 9) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' +
+         moneyShort(v) + '</text>';
+  }
+
+  keys.forEach(function (k, i) {
+    var val = vals[i];
+    var x = PL + band * i + (band - bw) / 2;
+    var h = (val / top) * ih;
+    var y = PT + ih - h;
+    if (val > 0) s += '<path d="' + barUp(x, y, bw, h, 4) + '" fill="var(--series-2)"/>';
+
+    var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
+      '<div class="t-row">' + esc(label) + '<b>' + money(val) + '</b></div>';
+    s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
+         '" data-tip="' + esc(tip) + '"/>';
+    // Only every other label once the months get tight, to stop them colliding.
+    if (band > 34 || i % 2 === 0) {
+      s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (H - 22) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
+           monthShort(k) + '</text>';
+    }
+    // The months repeat across years, so mark where each new year starts.
+    if (i === 0 || k.slice(0, 4) !== keys[i - 1].slice(0, 4)) {
+      s += '<line x1="' + (PL + band * i) + '" y1="' + PT + '" x2="' + (PL + band * i) + '" y2="' + (PT + ih + 6) +
+           '" stroke="var(--baseline)" stroke-width="1"/>' +
+           '<text x="' + (PL + band * i + 4) + '" y="' + (H - 6) + '" font-size="11" font-weight="600" fill="var(--text-secondary)">' +
+           k.slice(0, 4) + '</text>';
+    }
+  });
+
+  container.innerHTML = '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' + esc(label) + ' spending each month">' + s + '</svg></div>';
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
 }
 
 /* Net-position sparkline: monthly net, above/below zero. */
@@ -759,7 +828,7 @@ function chartNet(container, keys, map, fit) {
    5. Views
    ===================================================================== */
 
-var STATE = { tab: "overview", month: null, spendScope: "month", spendCat: null, fitScale: true,
+var STATE = { tab: "overview", month: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200 };
 
 function monthOptions(keys, sel, includeAll, allLabel) {
@@ -858,6 +927,19 @@ function renderSpending() {
   var cats = categoryTotals(DATA.txns, scopeMonth);
   var total = cats.reduce(function (s, r) { return s + r.value; }, 0);
   if (STATE.spendCat && !cats.some(function (c) { return c.name === STATE.spendCat; })) STATE.spendCat = null;
+  if (!STATE.spendCat) STATE.spendSub = null;
+
+  // Sub-categories depend on the chosen category, exactly as on Transactions.
+  var subs = STATE.spendCat ? subCategoryTotals(DATA.txns, STATE.spendCat, scopeMonth) : [];
+  if (STATE.spendSub && !subs.some(function (r) { return r.name === STATE.spendSub; })) STATE.spendSub = null;
+
+  function pickOpts(list, sel, allLabel) {
+    var o = '<option value="">' + allLabel + '</option>';
+    list.forEach(function (r) {
+      o += '<option value="' + esc(r.name) + '"' + (r.name === sel ? " selected" : "") + '>' + esc(r.name) + '</option>';
+    });
+    return o;
+  }
 
   var months = scopeMonth ? 1 : keys.length;
 
@@ -870,6 +952,12 @@ function renderSpending() {
       (STATE.spendScope === "month"
         ? '<div class="f"><label for="sp-month">Month</label><select id="sp-month">' + monthOptions(keys, STATE.month, false) + '</select></div>'
         : "") +
+      '<div class="f"><label for="sp-cat">Category</label><select id="sp-cat">' +
+        pickOpts(cats, STATE.spendCat, "All categories") + '</select></div>' +
+      '<div class="f"><label for="sp-sub">Sub-category</label><select id="sp-sub"' + (STATE.spendCat ? "" : " disabled") + '>' +
+        (STATE.spendCat
+          ? pickOpts(subs, STATE.spendSub, "All sub-categories")
+          : '<option value="">Pick a category first</option>') + '</select></div>' +
     '</div>' +
 
     '<div class="grid k4" style="margin-bottom:16px">' +
@@ -892,23 +980,41 @@ function renderSpending() {
       (STATE.spendCat
         ? '<h2>' + esc(STATE.spendCat) + '</h2><p class="cap">Sub-categories, ' +
           (scopeMonth ? monthLabel(scopeMonth) : "all time") + '.</p><div id="s-sub"></div>'
-        : '<h2>Sub-category detail</h2><p class="cap">Tap any category above to break it into sub-categories.</p>') +
-    '</div>';
+        : '<h2>Sub-category detail</h2><p class="cap">Choose a category above — or tap its bar — to break it into sub-categories.</p>') +
+    '</div>' +
+
+    (STATE.spendSub
+      ? '<div class="card"><h2>' + esc(STATE.spendSub) + ' month by month</h2>' +
+        '<p class="cap">Every month on record, not just the period chosen above, so the trend is readable.</p>' +
+        '<div id="s-trend"></div></div>'
+      : "");
 
   var host = el("tab-spending");
   host.innerHTML = html;
 
-  chartCategories(el("s-cat"), cats, total, function (cat) { STATE.spendCat = cat; renderSpending(); });
+  chartCategories(el("s-cat"), cats, total, function (cat) {
+    STATE.spendCat = cat; STATE.spendSub = null; renderSpending();
+  }, STATE.spendCat);
+
   if (STATE.spendCat) {
-    var subs = subCategoryTotals(DATA.txns, STATE.spendCat, scopeMonth);
     var subTotal = subs.reduce(function (s, r) { return s + r.value; }, 0);
-    chartCategories(el("s-sub"), subs, subTotal, null);
+    chartCategories(el("s-sub"), subs, subTotal, function (sub) {
+      STATE.spendSub = sub; renderSpending();
+    }, STATE.spendSub);
+  }
+  if (STATE.spendSub) {
+    chartSubTrend(el("s-trend"), keys, subMonthlyTotals(DATA.txns, STATE.spendCat, STATE.spendSub, keys), STATE.spendSub);
   }
 
   el("sc-month").addEventListener("click", function () { STATE.spendScope = "month"; renderSpending(); });
   el("sc-all").addEventListener("click", function () { STATE.spendScope = "all"; renderSpending(); });
   var sm = el("sp-month");
   if (sm) sm.addEventListener("change", function () { STATE.month = this.value; renderSpending(); });
+  // Changing the category invalidates whatever sub-category sat under it.
+  el("sp-cat").addEventListener("change", function () {
+    STATE.spendCat = this.value || null; STATE.spendSub = null; renderSpending();
+  });
+  el("sp-sub").addEventListener("change", function () { STATE.spendSub = this.value || null; renderSpending(); });
 }
 
 function filteredTxns() {
