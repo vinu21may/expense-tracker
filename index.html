@@ -192,7 +192,7 @@ svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
 .legend span { display: inline-flex; align-items: center; gap: 7px; }
-.hit { fill: transparent; cursor: pointer; }
+.hit { fill: transparent; cursor: pointer; touch-action: manipulation; }
 
 /* ---------------------------------------------------------------- tables */
 .tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -521,15 +521,20 @@ function attachTip(wrap, svg) {
       if (y < tip.offsetHeight + 4) y = nr.bottom - wr.top + tip.offsetHeight + 12;
       tip.style.left = x + "px";
       tip.style.top = y + "px";
-      if (ev && ev.type === "touchstart") ev.preventDefault();
     }
     node.addEventListener("mouseenter", show);
     node.addEventListener("mousemove", show);
-    node.addEventListener("touchstart", show, { passive: false });
+    // Touch: show the tooltip, but never preventDefault here — iOS only
+    // synthesises the follow-up click when the touch is left alone, and that
+    // click is what opens the sub-category breakdown.
+    node.addEventListener("touchstart", show, { passive: true });
     node.addEventListener("mouseleave", hide);
-    node.addEventListener("touchend", hide);
   });
   wrap.addEventListener("mouseleave", hide);
+  // On touch there is no mouseleave, so dismiss when the next tap lands elsewhere.
+  document.addEventListener("touchstart", function (ev) {
+    if (!svg.contains(ev.target)) hide();
+  }, { passive: true });
 }
 
 /*
