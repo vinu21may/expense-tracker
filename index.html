@@ -1200,9 +1200,12 @@ function renderAssets() {
     '</tr>';
   }).join("");
 
-  /* EMI still owed, per card, from the latest statement of each loan. */
+  /* EMI still owed, per card, from the latest statement of each loan.
+     A loan whose principal and interest have both reached zero is paid off, so
+     it is dropped everywhere "active" or "still to pay" is meant. */
+  var activeEmis = DATA.emis.filter(function (e) { return e.balP > 0 || e.balI > 0; });
   var emiByCard = {};
-  DATA.emis.forEach(function (e) {
+  activeEmis.forEach(function (e) {
     var k = String(e.card);
     if (!emiByCard[k]) emiByCard[k] = { p: 0, i: 0, n: 0 };
     emiByCard[k].p += e.balP; emiByCard[k].i += e.balI; emiByCard[k].n++;
@@ -1320,9 +1323,9 @@ function renderAssets() {
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
   var totalInvested = fdTotal + invValue + savingsTotal;
 
-  var emiP = DATA.emis.reduce(function (s, e) { return s + e.balP; }, 0);
-  var emiI = DATA.emis.reduce(function (s, e) { return s + e.balI; }, 0);
-  var emiHtml = DATA.emis.length ? DATA.emis.map(function (e) {
+  var emiP = activeEmis.reduce(function (s, e) { return s + e.balP; }, 0);
+  var emiI = activeEmis.reduce(function (s, e) { return s + e.balI; }, 0);
+  var emiHtml = activeEmis.length ? activeEmis.map(function (e) {
     return '<tr>' +
       '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">Card ' + esc(e.card) + " · " + esc(e.loanNo) + '</div></td>' +
       '<td class="num">' + money(e.amount) + '</td>' +
@@ -1364,7 +1367,7 @@ function renderAssets() {
           ? '<span class="' + (invGain >= 0 ? "up" : "down") + '">' + (invGain >= 0 ? "+" : "") + money(invGain) + '</span> on ' + money(invCost)
           : 'none tracked') + '</div></div>' +
       '<div class="tile"><div class="lbl">Loan outstanding</div><div class="val">' + money(emiP + emiI) + '</div>' +
-        '<div class="sub">' + DATA.emis.length + ' active EMI loans</div></div>' +
+        '<div class="sub">' + activeEmis.length + ' active EMI loans</div></div>' +
       '<div class="tile"><div class="lbl">Goals progress</div><div class="val">' +
         (DATA.goals.length
           ? (DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0) /
