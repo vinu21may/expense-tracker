@@ -1294,8 +1294,17 @@ function renderAssets() {
         '<div class="muted" style="font-size:12px">' +
         (i.valued ? "as at " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "—") +
         '</div></td>' +
-      '<td class="num"><b class="' + (up ? "up" : "down") + '">' + (up ? "+" : "") + money(i.gain) + '</b>' +
-        '<div class="muted" style="font-size:12px">' + (up ? "+" : "") + i.gainPct.toFixed(1) + '%</div></td>' +
+      /* A holding whose return is paid out rather than accumulating (the 54EC
+         bonds) has a permanent gain of zero, so show the interest banked to
+         date instead — labelled, because it is income already sitting in a bank
+         account, not a rise in what the holding is worth. */
+      '<td class="num">' + (i.interest
+        ? '<b class="up">+' + money(i.interest) + '</b>' +
+          '<div class="muted" style="font-size:12px">interest received' +
+          (i.gain ? ' · ' + (up ? "+" : "") + money(i.gain) + ' value' : '') + '</div>'
+        : '<b class="' + (up ? "up" : "down") + '">' + (up ? "+" : "") + money(i.gain) + '</b>' +
+          '<div class="muted" style="font-size:12px">' + (up ? "+" : "") + i.gainPct.toFixed(1) + '%</div>') +
+      '</td>' +
       '<td>' + (i.matures ? dayLabel(i.matures) + " " + i.matures.slice(0, 4) : "—") + '</td>' +
     '</tr>';
   }).join("") : "";
@@ -1325,10 +1334,32 @@ function renderAssets() {
 
   var emiP = activeEmis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = activeEmis.reduce(function (s, e) { return s + e.balI; }, 0);
+
+  /* The monthly instalment per loan.
+     The statement's Loan Summary gives balances and tenure but never the
+     instalment itself, so it is read off the card postings: each month a loan
+     charges one "OFFUS EMI,PRIN" and one "OFFUS EMI,INT" line carrying its loan
+     number, and the two together are that month's EMI. Take the latest month
+     posted, since the instalment changes as a loan is part-prepaid. */
+  var emiMonthly = {};
+  (function () {
+    var seen = {};
+    DATA.cc.forEach(function (c) {
+      // the loan number is split by a stray space in some statement layouts
+      var m = /OFFUSEMI,(?:PRIN|INT)[A-Z]*:?\d*,(\d+)\(Ref#/.exec(String(c.ds).replace(/\s+/g, ""));
+      if (!m) return;
+      var loan = m[1].replace(/^0+/, "");
+      if (!seen[loan] || c.d > seen[loan]) { seen[loan] = c.d; emiMonthly[loan] = 0; }
+      if (c.d === seen[loan]) emiMonthly[loan] += c.amt;
+    });
+  })();
+
   var emiHtml = activeEmis.length ? activeEmis.map(function (e) {
+    var monthly = emiMonthly[String(e.loanNo).replace(/^0+/, "")];
     return '<tr>' +
       '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">Card ' + esc(e.card) + " · " + esc(e.loanNo) + '</div></td>' +
       '<td class="num">' + money(e.amount) + '</td>' +
+      '<td class="num">' + (monthly ? '<b>' + money(monthly) + '</b>' : '<span class="muted">—</span>') + '</td>' +
       '<td class="num">' + money(e.balP) + '</td>' +
       '<td class="num">' + money(e.balI) + '</td>' +
       '<td>' + esc(e.balT) + '<div class="muted" style="font-size:12px">of ' + esc(e.tenure) + " at " + esc(e.rate) + '</div></td>' +
@@ -1397,13 +1428,13 @@ function renderAssets() {
       '<th class="num">EMI outstanding</th></tr></thead>' +
       '<tbody>' + cardHtml + '</tbody></table></div></div>' +
 
-    '<div class="grid k2">' +
-      '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>' +
-      '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdTotal) + ' invested.</p>' +
-        (fdHtml
-          ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
-          : '<div class="empty">No fixed deposits.</div>') +
-      '</div>' +
+    /* Stacked, not side by side: the FD table has five columns and was being
+       squeezed into half the width on the iPad, scrolling inside its own box. */
+    '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>' +
+    '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdTotal) + ' invested.</p>' +
+      (fdHtml
+        ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
+        : '<div class="empty">No fixed deposits.</div>') +
     '</div>' +
 
     '<div class="card"><h2>Investments</h2>' +
@@ -1419,7 +1450,7 @@ function renderAssets() {
     '<div class="card"><h2>Credit card EMI loans</h2>' +
       '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
       (emiHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
         : '<div class="empty">No active EMI loans.</div>') +
     '</div>';
 }
