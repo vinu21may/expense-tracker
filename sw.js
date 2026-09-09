@@ -5,7 +5,19 @@
  * NOT cached here — it is fetched from GitHub and kept in localStorage by the
  * app itself, so it never lands in a shared cache.
  */
-var CACHE = "finances-shell-v1";
+/*
+ * BUMP THIS NUMBER whenever index.html changes in a way the iPad must see.
+ *
+ * A browser only reinstalls a service worker when the bytes of THIS file
+ * change. The fetch handler below is network-first, so a redeploy is normally
+ * picked up on its own -- but a home-screen PWA on iOS can go on serving the
+ * shell it installed, and then app code stays frozen at whatever version was
+ * current when the worker was first registered. That is what happened between
+ * 11 Aug and 9 Sep 2026: paid-off EMI loans kept showing on the iPad although
+ * the fix was live on GitHub Pages. Changing this string reinstalls the worker,
+ * which claims open pages and deletes every older cache in activate.
+ */
+var CACHE = "finances-shell-v2";
 var SHELL = ["./", "./index.html", "./manifest.json", "./icon.png"];
 
 self.addEventListener("install", function (e) {

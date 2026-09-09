@@ -1444,7 +1444,30 @@ function renderInsurance() {
   }).length;
   function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
 
-  var polHtml = pols.length ? pols.map(function (p) {
+  /* Health, Life and Vehicle each get their own box.
+
+     Mapped from the sheet's Type explicitly rather than by guessing from the
+     text, and anything unrecognised falls through to "Other cover" so a policy
+     type added later shows up somewhere instead of silently vanishing.
+
+     Personal Accident sits under Vehicle: it is the compulsory owner-driver
+     cover that the car policy deliberately omits because this standalone one
+     exists, and the two renew on the same day. */
+  var GROUPS = [
+    { key: "health",  title: "Health",  kinds: ["Health"] },
+    { key: "life",    title: "Life",    kinds: ["Life", "Life (ULIP)"] },
+    { key: "vehicle", title: "Vehicle", kinds: ["Motor", "Personal Accident"] },
+    { key: "other",   title: "Other cover", kinds: [] }
+  ];
+
+  function groupOf(kind) {
+    for (var i = 0; i < GROUPS.length; i++) {
+      if (GROUPS[i].kinds.indexOf(kind) >= 0) return GROUPS[i].key;
+    }
+    return "other";
+  }
+
+  function polBlock(p) {
     var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
     // no renewal date means the policy just runs on (monthly term premium, the
     // half-yearly ULIP) — Cover Period already says how, so don't echo it
@@ -1478,7 +1501,7 @@ function renderInsurance() {
         field("Cover Period", period) +
       '</dl>' +
     '</div>';
-  }).join("") : "";
+  }
 
   var expired = pols.filter(function (p) {
     return p.renewal && p.renewal < today;
@@ -1494,10 +1517,29 @@ function renderInsurance() {
         '<div class="sub">within 45 days</div></div>' +
     '</div>' +
 
-        '<div class="card"><h2>Insurance cover</h2>' +
-      '<p class="cap">What is covered and when it lapses. This is cover, not money you hold, so it counts towards no asset total — and the premiums are already in your spending, so nothing here is a second record of them.</p>' +
-      (polHtml || '<div class="empty">No policies tracked.</div>') +
-    '</div>';
+    '<p class="cap" style="margin:0 0 16px">What is covered and when it lapses. This is cover, not money you ' +
+      'hold, so it counts towards no asset total — and the premiums are already in your spending, so nothing ' +
+      'here is a second record of them.</p>' +
+
+    // one box per kind of cover; a group with no policies is left out entirely
+    (pols.length
+      ? GROUPS.map(function (g) {
+          var mine = pols.filter(function (p) { return groupOf(p.kind) === g.key; });
+          if (!mine.length) return "";
+          var prem = mine.reduce(function (s, p) { return s + p.premium; }, 0);
+          var soon = mine.filter(function (p) {
+            if (!p.renewal) return false;
+            return Math.round((new Date(p.renewal) - new Date(today)) / 86400000) <= 45;
+          }).length;
+          return '<div class="card"><h2>' + g.title + '</h2>' +
+            '<p class="cap">' + mine.length + (mine.length === 1 ? ' policy' : ' policies') +
+              ' · ' + money(prem) + ' a year' +
+              (soon ? ' · <b>' + soon + ' renewing within 45 days</b>' : '') + '</p>' +
+            mine.map(polBlock).join("") +
+          '</div>';
+        }).join("")
+      : '<div class="card"><h2>Insurance cover</h2>' +
+        '<div class="empty">No policies tracked.</div></div>');
 }
 
 /* Money fronted for Amma and repaid over the following months. Both legs are
