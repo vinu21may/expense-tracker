@@ -150,6 +150,12 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 @media (min-width: 700px) and (max-width: 1039px) { .grid.k5 { grid-template-columns: repeat(3,1fr); } }
 @media (min-width: 1040px) { .grid.k5 { grid-template-columns: repeat(5,1fr); } }
 @media (min-width: 1000px) { .grid.split { grid-template-columns: 1.35fr 1fr; align-items: start; } }
+/* A Mac on a 32" 4K monitor (BenQ EW3290U, "looks like" 1920x1080). Below
+   1500px nothing changes, so the iPad -- 1366px at its widest -- is untouched. */
+@media (min-width: 1500px) {
+  main { max-width: 1840px; }
+  .desc { max-width: 720px; }
+}
 
 /* ------------------------------------------------------------ stat tiles */
 .tile {
@@ -562,8 +568,21 @@ function attachTip(wrap, svg) {
  * Grouped vertical bars — income vs expenses by month.
  * Two series, so a legend is always present (identity is never colour-alone).
  */
+/* Every chart has a 760-unit design width and is stretched to fill its card,
+   so on a wide monitor each label and bar grew with the card -- at 1,840px the
+   income chart alone filled the screen. Past WIDE_FROM px of card width the
+   design width grows with the card instead, holding the on-screen scale at
+   WIDE_SCALE; heights stay as designed, so charts get wider, not taller. At or
+   below WIDE_FROM every chart draws exactly as before -- the iPad's widest card
+   is about 1,240px. */
+var WIDE_FROM = 1300, WIDE_SCALE = 1.35;
+function chartWidth(container) {
+  var cw = (container && container.clientWidth) || 0;
+  return cw > WIDE_FROM ? Math.round(cw / WIDE_SCALE) : 760;
+}
+
 function chartIncomeExpense(container, keys, map, fit) {
-  var W = 760, H = 300, PL = 62, PR = 12, PT = 34, PB = 34;
+  var W = chartWidth(container), H = 300, PL = 62, PR = 12, PT = 34, PB = 34;
   var iw = W - PL - PR, ih = H - PT - PB;
 
   var all = [];
@@ -672,7 +691,7 @@ function chartCategories(container, rows, total, onPick, highlight) {
     shown.push({ name: "Other (" + rest.length + " categories)", value: rest.reduce(function (s, r) { return s + r.value; }, 0), lump: true });
   }
 
-  var rowH = 30, W = 760, PL = 172, PR = 96, PT = 4;
+  var rowH = 30, W = chartWidth(container), PL = 172, PR = 96, PT = 4;
   var H = PT + shown.length * rowH + 4;
   var iw = W - PL - PR;
   var max = shown.reduce(function (m, r) { return Math.max(m, r.value); }, 0) || 1;
@@ -728,7 +747,7 @@ function chartCategories(container, rows, total, onPick, highlight) {
 function chartSubTrend(container, keys, vals, label) {
   if (!keys.length) { container.innerHTML = '<div class="empty">No months to chart.</div>'; return; }
 
-  var W = 760, H = 186, PL = 62, PR = 12, PT = 20, PB = 42;
+  var W = chartWidth(container), H = 186, PL = 62, PR = 12, PT = 20, PB = 42;
   var iw = W - PL - PR, ih = H - PT - PB;
   var top = niceMax(Math.max.apply(null, vals.concat([0])));
   var band = iw / keys.length;
@@ -776,7 +795,7 @@ function chartSubTrend(container, keys, vals, label) {
 
 /* Net-position sparkline: monthly net, above/below zero. */
 function chartNet(container, keys, map, fit) {
-  var W = 760, H = 150, PL = 62, PR = 12, PT = 18, PB = 26;
+  var W = chartWidth(container), H = 150, PL = 62, PR = 12, PT = 18, PB = 26;
   var iw = W - PL - PR, ih = H - PT - PB;
   var vals = keys.map(function (k) { return net(map[k]); });
   var ac = axisCap(vals.map(Math.abs));
@@ -1646,6 +1665,24 @@ function switchTab(name) {
   if (name === "amma")      renderAmma();
   window.scrollTo(0, 0);
 }
+
+/* Charts size themselves when drawn, so resizing a Mac window has to redraw
+   them. Only when the window is, or was, wide: an iPad rotating between
+   portrait and landscape never reaches 1400px and is left alone. Scroll
+   position is kept, since switchTab jumps to the top. */
+var lastWidth = window.innerWidth, resizeTimer = null;
+window.addEventListener("resize", function () {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () {
+    var w = window.innerWidth;
+    if (DATA && (w >= 1400 || lastWidth >= 1400) && w !== lastWidth) {
+      var y = window.scrollY;
+      switchTab(STATE.tab);
+      window.scrollTo(0, y);
+    }
+    lastWidth = w;
+  }, 200);
+});
 
 function boot(data, fromCache) {
   DATA = data;
