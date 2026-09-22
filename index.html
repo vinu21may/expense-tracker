@@ -403,7 +403,11 @@ function blankAgg() {
 function addTo(a, t) {
   if (t.t === "Income")        a.income   += t.cr;
   else if (t.t === "Expense")  a.expense  += t.db;
-  else if (t.t === "Savings")  a.invest   += t.db;
+  // Invested is NEW money only: an FD redemption (a Savings-typed credit)
+  // offsets the placements it funds, so a rollover shows as the interest
+  // reinvested rather than the whole deposit. Can go negative in a month that
+  // drew savings down. Matches the workbook's own dashboards.
+  else if (t.t === "Savings")  a.invest   += t.db - t.cr;
   else if (t.t === "Transfer") a.transfer += t.db;
   a.count++;
   return a;
@@ -638,7 +642,7 @@ function chartIncomeExpense(container, keys, map, fit) {
     var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
       '<div class="t-row"><i class="swatch" style="background:var(--series-1)"></i>Income<b>' + money(a.income) + '</b></div>' +
       '<div class="t-row"><i class="swatch" style="background:var(--series-2)"></i>Expenses<b>' + money(a.expense) + '</b></div>' +
-      (a.invest ? '<div class="t-row"><i class="swatch" style="background:var(--muted)"></i>Invested<b>' + money(a.invest) + '</b></div>' : '') +
+      (a.invest ? '<div class="t-row"><i class="swatch" style="background:var(--muted)"></i>Invested (net)<b>' + money(a.invest) + '</b></div>' : '') +
       '<div class="t-row">Net<b>' + money(net(a)) + '</b></div>' +
       '<div class="t-row">Transactions<b>' + a.count + '</b></div>';
 
@@ -916,7 +920,9 @@ function renderOverview() {
       '<div class="tile"><div class="lbl">Income</div><div class="val">' + money(a.income) + '</div>' + delta(a.income, prev && prev.income, true) + '</div>' +
       '<div class="tile"><div class="lbl">Expenses</div><div class="val">' + money(a.expense) + '</div>' + delta(a.expense, prev && prev.expense, false) + '</div>' +
       '<div class="tile"><div class="lbl">Net saved</div><div class="val">' + money(net(a)) + '</div>' +
-        '<div class="sub">' + (a.invest ? "after " + money(a.invest) + " invested" : "nothing invested this month") + '</div></div>' +
+        '<div class="sub">' + (a.invest > 0 ? "after " + money(a.invest) + " newly invested"
+          : a.invest < 0 ? "including " + money(-a.invest) + " drawn from savings"
+          : "nothing newly invested this month") + '</div></div>' +
       '<div class="tile"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
@@ -928,7 +934,7 @@ function renderOverview() {
       '<div class="card"><h2>Where ' + monthLabel(STATE.month) + ' went</h2>' +
         '<p class="cap">' + money(catTotal) + ' across ' + cats.length + ' categories. Tap a bar to open it.</p>' +
         '<div id="c-cat"></div></div>' +
-      '<div class="card"><h2>Net saved each month</h2><p class="cap">Income minus expenses and investments.</p>' +
+      '<div class="card"><h2>Net saved each month</h2><p class="cap">Income minus expenses and new money invested. An FD that matures and is reinvested counts only its interest.</p>' +
         '<div id="c-net"></div>' +
         '<div style="margin-top:18px;border-top:1px solid var(--grid);padding-top:14px">' +
           '<div style="font-size:13px;font-weight:600;margin-bottom:8px">' + yr + ' year to date</div>' +
