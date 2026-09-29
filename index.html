@@ -1506,17 +1506,30 @@ function renderAssets() {
     }
     return y;
   });
+  /* Tax at the rate the workbook states (its slab plus cess); the code names
+     no rate of its own. Without it, only taxable amounts are shown. */
+  var tx = DATA.exitTax || null;
+  var taxMult = tx ? tx.slab / 100 * (1 + tx.cess / 100) : null;
+  var taxLbl = tx ? tx.slab + "% slab + " + tx.cess + "% cess" : "";
+  function taxOn(v) { return (taxMult === null || v === null || v === undefined) ? null : Math.round(v * taxMult); }
   var nowTotal = exits.reduce(function (t, x) { return t + (x.today || 0); }, 0);
   var nowTax = exits.reduce(function (t, x) { return t + (x.todayTaxable || 0); }, 0);
+  var nowTaxDue = taxOn(nowTax);
+  var holdTaxDue = taxOn(exits.reduce(function (t, x) {
+    return t + (x.maturityTaxable || 0) + (x.beforeTaxable || 0);
+  }, 0));
   var locked = exits.filter(function (x) { return x.today === null; });
   var lockedTotal = locked.reduce(function (t, x) { return t + (x.book || 0); }, 0);
 
-  function exitBox(label, value, note, taxable, why, when) {
+  function exitBox(label, value, note, taxable, why, when, before) {
+    var known = !(taxable === null || taxable === undefined);
     return '<div class="exit-box"><div class="lbl">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
       (value !== null && value !== undefined
         ? '<div class="v">' + money(value) + '</div>' +
-          '<div class="t">Taxable: <b>' + (taxable === null || taxable === undefined ? '<span class="muted">not known</span>'
-                                          : money(taxable)) + '</b></div>'
+          '<div class="t">Taxable: <b>' + (known ? money(taxable) : '<span class="muted">not known</span>') + '</b>' +
+            (known && taxMult !== null ? ' · tax <b>' + money(taxOn(taxable)) + '</b>' : '') + '</div>' +
+          (before ? '<div class="t">Plus ' + money(before) + ' taxable before then · tax <b>' +
+                    money(taxOn(before)) + '</b></div>' : '')
         : '<div class="v muted">' + esc(note || "—") + '</div>') +
       '<div class="why">' + esc(why) + '</div></div>';
   }
@@ -1525,7 +1538,8 @@ function renderAssets() {
         '<span class="muted" style="font-size:12.5px">' + esc(x.kind) + ' · book value ' + money(x.book) + '</span></div>' +
       '<div class="exit-pair">' +
         exitBox("If cashed in today", x.today, x.todayNote, x.todayTaxable, x.todayWhy, "") +
-        exitBox("At maturity", x.maturity, x.maturityNote, x.maturityTaxable, x.maturityWhy, x.matures) +
+        exitBox("At maturity", x.maturity, x.maturityNote, x.maturityTaxable, x.maturityWhy, x.matures,
+                x.beforeTaxable) +
       '</div>' +
       '<div class="tax"><b>Tax:</b> ' + esc(x.tax) + '</div></div>';
   }).join("");
@@ -1551,11 +1565,19 @@ function renderAssets() {
           'maturity, with the part that counts as taxable income. Estimates to plan with, not tax advice.' +
           (exits[0].asOf ? ' Worked out on ' + esc(exits[0].asOf.split("-").reverse().join("/")) +
             '; fixed deposits are recalculated each day.' : '') + '</p>' +
-          '<div class="grid k2" style="margin-bottom:6px">' +
+          '<div class="grid k4" style="margin-bottom:6px">' +
             '<div class="exit-box"><div class="lbl">You could get today</div><div class="v">' + money(nowTotal) + '</div>' +
               '<div class="t">of which taxable ' + money(nowTax) + '</div></div>' +
+            (taxMult !== null
+              ? '<div class="exit-box"><div class="lbl">Tax if cashed in today</div><div class="v">' + money(nowTaxDue) + '</div>' +
+                  '<div class="t">at ' + esc(taxLbl) + '</div></div>'
+              : '') +
             '<div class="exit-box"><div class="lbl">Locked until maturity</div><div class="v">' + money(lockedTotal) + '</div>' +
               '<div class="t">' + locked.map(function (x) { return esc(x.name.split(" - ")[0]); }).join(", ") + '</div></div>' +
+            (taxMult !== null
+              ? '<div class="exit-box"><div class="lbl">Tax if all held to maturity</div><div class="v">' + money(holdTaxDue) + '</div>' +
+                  '<div class="t">spread over the years it falls due; holdings not yet known excluded</div></div>'
+              : '') +
           '</div>' +
           exitHtml +
         '</div>'
