@@ -931,6 +931,64 @@ function interestTaxCards() {
   }).join("");
 }
 
+/* Tax on fixed-deposit interest, by financial year (Apr-Mar). FD interest is
+   taxed as it accrues, not when the FD matures, so each FD's interest is
+   spread evenly over its term (the bank's stated interest / days) and the part
+   falling inside each financial year is counted there. The bank deducts TDS at
+   10% once one bank's interest to you passes Rs 50,000 in a year; the rest is
+   yours to pay. Only FDs held now are counted -- interest from FDs that closed
+   earlier in the year is not in the data. */
+var FD_TDS_RATE = 10, FD_TDS_LIMIT = 50000;
+function fdInterestTaxCard() {
+  var tx = DATA.exitTax, fds = DATA.fds || [];
+  if (!tx || !fds.length) return "";
+  var mult = tx.slab / 100 * (1 + tx.cess / 100);
+  var DAY = 86400000;
+  function dt(iso) { return new Date(iso + "T00:00:00"); }
+  function fyShare(f, y0) {                      // interest of FD f falling in FY y0-(y0+1)
+    var a = dt(f.start), b = dt(f.maturity), days = Math.round((b - a) / DAY);
+    if (!(days > 0)) return 0;
+    var lo = Math.max(a, new Date(y0, 3, 1)), hi = Math.min(b, new Date(y0 + 1, 3, 1));
+    return hi > lo ? f.interest * Math.round((hi - lo) / DAY) / days : 0;
+  }
+  var now = new Date(), y0 = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  function fyName(y) { return "FY " + y + "-" + String(y + 1).slice(2); }
+  var rows = fds.map(function (f) { return { f: f, now: fyShare(f, y0), next: fyShare(f, y0 + 1) }; });
+  var total = rows.reduce(function (t, r) { return t + r.now; }, 0);
+  var next = rows.reduce(function (t, r) { return t + r.next; }, 0);
+  var byBank = {};
+  rows.forEach(function (r) { var k = r.f.bank || "bank"; byBank[k] = (byBank[k] || 0) + r.now; });
+  var tds = Object.keys(byBank).reduce(function (t, k) {
+    return t + (byBank[k] > FD_TDS_LIMIT ? byBank[k] * FD_TDS_RATE / 100 : 0);
+  }, 0);
+  var tax = total * mult;
+  var list = rows.map(function (r) {
+    return '<tr><td>' + esc((r.f.bank ? r.f.bank + " " : "") + r.f.id) + '<div class="muted" style="font-size:12px">' +
+      money(r.f.principal) + ' at ' + r.f.rate + '% · ' + dayLabel(r.f.start) + ' ' + r.f.start.slice(0, 4) + ' → ' +
+      dayLabel(r.f.maturity) + ' ' + r.f.maturity.slice(0, 4) + '</div></td>' +
+      '<td class="num">' + money(r.now) + '</td><td class="num">' + money(r.now * mult) + '</td>' +
+      '<td class="num">' + (r.next ? money(r.next) : '<span class="muted">—</span>') + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Tax on fixed deposit interest</h2>' +
+    '<p class="cap">FD interest is taxed in the year it builds up, not when the FD matures, at your ' + tx.slab +
+      '% slab plus ' + tx.cess + '% cess. The bank deducts ' + FD_TDS_RATE + '% TDS once its interest to you passes ' +
+      money(FD_TDS_LIMIT) + ' in a year; the rest is yours to pay through advance tax or with your return. ' +
+      'Counts the FDs you hold now.</p>' +
+    '<div class="grid k4">' +
+      '<div class="exit-box"><div class="lbl">Interest this year · ' + fyName(y0) + '</div><div class="v">' + money(total) + '</div>' +
+        '<div class="t">from ' + fds.length + ' FDs</div></div>' +
+      '<div class="exit-box"><div class="lbl">Tax on it</div><div class="v">' + money(tax) + '</div>' +
+        '<div class="t">at ' + tx.slab + '% + ' + tx.cess + '% cess</div></div>' +
+      '<div class="exit-box"><div class="lbl">Bank deducts (TDS)</div><div class="v">' + money(tds) + '</div>' +
+        '<div class="t">' + (tds ? FD_TDS_RATE + '% of the interest' : 'under the ' + money(FD_TDS_LIMIT) + ' limit') + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Left for you to pay</div><div class="v">' + money(tax - tds) + '</div>' +
+        '<div class="t">' + (next ? 'then ' + money(next * mult) + ' tax in ' + fyName(y0 + 1) : 'nothing carries into next year') + '</div></div>' +
+    '</div>' +
+    '<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>FD</th><th class="num">Interest ' + fyName(y0) +
+      '</th><th class="num">Tax</th><th class="num">Interest ' + fyName(y0 + 1) + '</th></tr></thead><tbody>' + list +
+    '</tbody></table></div></div>';
+}
+
 function renderOverview() {
   var idx = monthsIndex(DATA.txns);
   var keys = idx.keys, map = idx.map;
@@ -981,6 +1039,7 @@ function renderOverview() {
     '</div>' +
 
     interestTaxCards() +
+    fdInterestTaxCard() +
 
     '<div class="card"><h2>Income vs expenses</h2><p class="cap">Last ' + last12.length + ' months. Tap a month for detail.</p>' +
       '<div id="c-ie"></div></div>' +
@@ -1837,6 +1896,14 @@ function employerStyle(company, cache, meta) {
   return cache[company];
 }
 
+/* Whole percent for the chart's label row, where bars are too narrow for a
+   decimal; under 1% keeps one decimal so a small rise never reads as 0%.
+   The tooltip keeps pctLabel's detail. */
+function pctShort(p) {
+  var v = Math.abs(p * 100);
+  return (p >= 0 ? "+" : "−") + (v < 1 ? v.toFixed(1) : v.toFixed(0)) + "%";
+}
+
 function pctLabel(p) {
   var v = Math.abs(p * 100);
   if (v < 0.05) return "0%";
@@ -1859,10 +1926,12 @@ function roundTicks(max) {
 /* Average regular monthly pay per employer per year, each employer's bars
    grouped together, labelled with the change on the previous year. */
 function chartPayRise(container, groups) {
-  var bars = 0;
-  groups.forEach(function (g) { bars += g.years.length; });
-  var gapBands = 0.7;                           // space between employers, in bars
-  var W = chartWidth(container), H = 300, PL = 62, PR = 12, PT = 30, PB = 50;
+  // offer-letter bars carry a single value and no % label, so they take less
+  // width than payslip bars, leaving the payslip bars room for their labels
+  var LETTER_W = 0.6, bars = 0;
+  groups.forEach(function (g) { bars += g.years.length * (g.letter ? LETTER_W : 1); });
+  var gapBands = 0.45;                          // space between employers, in bars
+  var W = chartWidth(container), H = 326, PL = 62, PR = 12, PT = 24, PB = 82;
   var iw = W - PL - PR, ih = H - PT - PB;
   var band = iw / (bars + gapBands * (groups.length - 1));
   var bw = Math.max(6, Math.min(34, band - 8));
@@ -1881,32 +1950,58 @@ function chartPayRise(container, groups) {
   }
 
   var x = PL;
+  // narrow bars: alternate the % labels between two heights so neighbours never touch
   groups.forEach(function (g, gi) {
-    var gx0 = x;
-    g.years.forEach(function (y) {
-      var bx = x + (band - bw) / 2, h = (y.avg / top) * ih, by = PT + ih - h;
-      s += '<path d="' + barUp(bx, by, bw, h, 4) + '" fill="' + g.colour + '"/>';
-      if (y.change !== null && Math.abs(y.change) >= 0.0005) {
-        s += '<text x="' + (bx + bw / 2) + '" y="' + (by - 7) + '" text-anchor="middle" font-size="10.5" ' +
-             'font-weight="700" fill="var(--text-secondary)" font-variant-numeric="tabular-nums">' +
-             pctLabel(y.change) + '</text>';
+    var gx0 = x, noInr = false;
+    g.years.forEach(function (y, yi) {
+      var bandHere = band * (g.letter ? LETTER_W : 1);
+      var bwHere = Math.min(bw, bandHere - 4);
+      var bx = x + (bandHere - bwHere) / 2, h = (y.avg / top) * ih, by = PT + ih - h;
+      if (y.avg > 0) s += '<path d="' + barUp(bx, by, bwHere, Math.max(h, 2), 2) + '" fill="' + g.colour + '"/>';
+      if (y.letter) {
+        // one figure from the offer letter: label it with its value; a job with no
+        // rupee monthly figure gets one note across its group, after the loop
+        if (y.avg > 0) {
+          s += '<text x="' + (bx + bwHere / 2) + '" y="' + (by - 6) + '" text-anchor="middle" ' +
+               'font-size="10" fill="var(--text-secondary)" font-variant-numeric="tabular-nums">' +
+               moneyShort(y.avg) + '</text>';
+        } else noInr = true;
       }
-      s += '<text x="' + (x + band / 2) + '" y="' + (PT + ih + 16) + '" text-anchor="middle" font-size="10.5" fill="var(--muted)">' +
+      // the change on the year before, in its own row under the year labels, so
+      // steeply rising neighbours can never put two labels on top of each other
+      if (!y.letter && y.change !== null && Math.abs(y.change) >= 0.0005) {
+        s += '<text x="' + (x + band / 2) + '" y="' + (PT + ih + 30) + '" text-anchor="middle" font-size="9" ' +
+             'font-weight="700" fill="var(--text-secondary)" font-variant-numeric="tabular-nums">' +
+             pctShort(y.change) + '</text>';
+      }
+      s += '<text x="' + (x + bandHere / 2) + '" y="' + (PT + ih + 16) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' +
            "’" + String(y.y).slice(2) + '</text>';
-      var tip = '<div class="t-title">' + esc(g.short) + ' · ' + y.y + '</div>' +
+      var tip = y.letter
+        ? '<div class="t-title">' + esc(g.full || g.short) + ' · joined ' + y.y + '</div>' +
+          '<div class="t-row">' + esc(y.role || "") + '</div>' +
+          '<div class="t-row"><i class="swatch" style="background:' + g.colour + '"></i>Pay at joining<b>' +
+            (y.avg > 0 ? money(y.avg) + '/mo' : 'no ₹ monthly figure') + '</b></div>' +
+          '<div class="t-row muted" style="font-size:12px">' + esc(y.pay || "") + '</div>' +
+          '<div class="t-row muted" style="font-size:12px">From the offer or appointment letter</div>'
+        : '<div class="t-title">' + esc(g.short) + ' · ' + y.y + '</div>' +
         '<div class="t-row"><i class="swatch" style="background:' + g.colour + '"></i>Regular pay<b>' + money(y.avg) + '/mo</b></div>' +
         '<div class="t-row">Change on ' + (y.y - 1) + '<b>' + (y.change === null ? "first year here" : pctLabel(y.change)) + '</b></div>' +
         '<div class="t-row">Bonus in the year<b>' + (y.bonus ? money(y.bonus) : "none") + '</b></div>' +
         '<div class="t-row">Payslips<b>' + y.n + '</b></div>';
-      s += '<rect class="hit" x="' + x + '" y="' + PT + '" width="' + band + '" height="' + ih +
+      s += '<rect class="hit" x="' + x + '" y="' + PT + '" width="' + bandHere + '" height="' + ih +
            '" data-tip="' + esc(tip) + '"/>';
-      x += band;
+      x += bandHere;
     });
-    // employer name under its own bars, with a bracket showing the span
-    var mid = (gx0 + x) / 2;
-    s += '<line x1="' + (gx0 + 3) + '" y1="' + (PT + ih + 24) + '" x2="' + (x - 3) + '" y2="' + (PT + ih + 24) +
+    // employer name under its own bars, with a bracket showing the span; names
+    // alternate between two rows so single-bar employers side by side never collide
+    var mid = (gx0 + x) / 2, ny = PT + ih + (gi % 2 ? 72 : 56);
+    if (noInr) {
+      s += '<text x="' + mid + '" y="' + (PT + ih - 6) + '" text-anchor="middle" font-size="10" ' +
+           'fill="var(--muted)">no ₹</text>';
+    }
+    s += '<line x1="' + (gx0 + 3) + '" y1="' + (PT + ih + 40) + '" x2="' + (x - 3) + '" y2="' + (PT + ih + 40) +
          '" stroke="' + g.colour + '" stroke-width="2" stroke-linecap="round"/>' +
-         '<text x="' + mid + '" y="' + (PT + ih + 40) + '" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--text-secondary)">' +
+         '<text x="' + mid + '" y="' + ny + '" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text-secondary)">' +
          esc(g.short) + '</text>';
     x += band * gapBands;
   });
@@ -1914,9 +2009,12 @@ function chartPayRise(container, groups) {
        '" stroke="var(--baseline)" stroke-width="1"/>';
 
   container.innerHTML =
-    '<div class="legend">' + groups.map(function (g) {
+    '<div class="legend">' + groups.filter(function (g) { return !g.letter; }).map(function (g) {
       return '<span><i class="swatch" style="background:' + g.colour + '"></i>' + esc(g.short) + '</span>';
-    }).join("") + '</div>' +
+    }).join("") +
+    (groups.some(function (g) { return g.letter; })
+      ? '<span><i class="swatch" style="background:var(--muted)"></i>Pay at joining, from the offer letter</span>' : '') +
+    '</div>' +
     '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
     '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Average regular monthly pay by year, per employer">' +
     s + '</svg></div>';
@@ -2102,9 +2200,9 @@ function renderSalary() {
     '</div>' +
 
     '<div class="card"><h2>Year-on-year pay rise</h2>' +
-      '<p class="cap">Average regular monthly pay each year, grouped by employer. Bonus, arrears and ' +
-        'one-offs are left out, so a bonus month never looks like a raise. The label is the change on ' +
-        'the year before at the same employer. Tap a bar for detail.</p>' +
+      '<p class="cap">Every job since you started. Coloured bars: average regular monthly pay each year from ' +
+        'payslips; the % under each year is the change on the year before at the same employer (bonus, arrears and ' +
+        'one-offs left out). Grey bars: pay at joining from the offer letter. Tap a bar for detail.</p>' +
       '<div id="sal-rise"></div>' +
       '<p class="cap" style="margin:12px 0 0">First and last years at a firm are part-years.' +
         (notes.rise ? ' ' + esc(notes.rise) : '') + '</p>' +
@@ -2146,7 +2244,26 @@ function renderSalary() {
       '<th class="num">Take-home</th><th></th></tr></thead><tbody>' + slipRows + '</tbody></table></div>' +
     '</div>';
 
-  chartPayRise(el("sal-rise"), groups);
+  /* The chart follows the whole career in date order: employers with payslips
+     keep their year-by-year bars; the others show one grey bar, the joining
+     pay from their offer letter (or a note where it isn't a rupee monthly). */
+  var riseGroups = [], used = {};
+  (DATA.salaryCareer || []).forEach(function (j) {
+    var g = groups.filter(function (x) { return x.company === j.employer; })[0];
+    if (g) {
+      if (!used[g.company]) { riseGroups.push(g); used[g.company] = true; }
+      return;
+    }
+    var yr = +(j.from.slice(-4)) || 0;
+    var last = riseGroups[riseGroups.length - 1];
+    var bar = { y: yr, avg: j.monthly || 0, n: 0, change: null, bonus: 0, letter: true, role: j.role, pay: j.pay };
+    if (last && last.letter && last.company === j.employer) { last.years.push(bar); return; }
+    // one word under a narrow grey bar (the tooltip carries the full name)
+    riseGroups.push({ company: j.employer, short: j.employer.split(" (")[0].split(" ")[0], full: j.employer,
+                      colour: "var(--muted)", letter: true, years: [bar] });
+  });
+  groups.forEach(function (g) { if (!used[g.company]) riseGroups.push(g); });
+  chartPayRise(el("sal-rise"), riseGroups.length ? riseGroups : groups);
   if (payouts.length) chartBonus(el("sal-bonus"), payouts, styles);
 }
 
