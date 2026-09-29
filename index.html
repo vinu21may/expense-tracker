@@ -24,6 +24,8 @@
   --border:         rgba(11,11,11,0.10);
   --series-1:       #2a78d6;   /* income  */
   --series-2:       #eb6834;   /* expense */
+  --series-3:       #1baf7a;   /* categorical slot 3 (Salary: employers) */
+  --series-4:       #eda100;   /* categorical slot 4 */
   --seq-500:        #256abf;
   --seq-450:        #2a78d6;
   --seq-400:        #3987e5;
@@ -49,6 +51,8 @@
     --border:         rgba(255,255,255,0.10);
     --series-1:       #3987e5;
     --series-2:       #d95926;
+    --series-3:       #199e70;
+    --series-4:       #c98500;
     --seq-500:        #3987e5;
     --seq-450:        #2a78d6;
     --seq-400:        #256abf;
@@ -300,6 +304,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Accounts &amp; Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
+      <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
     </nav>
   </header>
@@ -309,6 +314,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
+    <section id="tab-salary"    class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
@@ -1608,6 +1614,291 @@ function renderInsurance() {
         '<div class="empty">No policies tracked.</div></div>');
 }
 
+/* =====================================================================
+   Salary -- every payslip found in email, from the Salary History sheet.
+
+   Each slip's gross is split (in the workbook) into regular pay + bonus +
+   arrears + one-offs. Pay rises are measured on REGULAR pay only, so a bonus
+   month or a month of back pay never reads as a raise. Older data.json files
+   have no salary array, hence the || [].
+   ===================================================================== */
+
+/* Employers keep a fixed colour wherever they appear, handed out in the order
+   they employed you. The slot order keeps the two warm hues (yellow, orange)
+   apart, since consecutive employers sit side by side in the chart. Names and
+   notes come from data.json (salaryMeta) -- this code is public. */
+var EMPLOYER_SLOTS = ["var(--series-4)", "var(--series-1)", "var(--series-3)", "var(--series-2)",
+                      "#e87ba4", "#008300", "#4a3aa7"];
+
+function employerStyle(company, cache, meta) {
+  if (!cache[company]) {
+    var used = Object.keys(cache).length;
+    cache[company] = { short: (meta.short && meta.short[company]) || company.split(" (")[0],
+                       colour: EMPLOYER_SLOTS[used % EMPLOYER_SLOTS.length] };
+  }
+  return cache[company];
+}
+
+function pctLabel(p) {
+  var v = Math.abs(p * 100);
+  if (v < 0.05) return "0%";
+  // whole numbers from 10% up keep adjacent labels from running into each other
+  return (p >= 0 ? "+" : "−") + (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + "%";
+}
+
+/* A round tick step (₹10k, ₹20k, ₹25k, ₹50k, ₹1L ...) giving at most five
+   gridlines, so the axis reads ₹50k / ₹1L / ₹1.5L rather than ₹63k / ₹1.3L. */
+function roundTicks(max) {
+  var steps = [1, 2, 2.5, 5];
+  for (var mag = 1000; ; mag *= 10) {
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i] * mag;
+      if (max / st <= 5) return { step: st, top: Math.max(st, Math.ceil(max / st) * st) };
+    }
+  }
+}
+
+/* Average regular monthly pay per employer per year, each employer's bars
+   grouped together, labelled with the change on the previous year. */
+function chartPayRise(container, groups) {
+  var bars = 0;
+  groups.forEach(function (g) { bars += g.years.length; });
+  var gapBands = 0.7;                           // space between employers, in bars
+  var W = chartWidth(container), H = 300, PL = 62, PR = 12, PT = 30, PB = 50;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var band = iw / (bars + gapBands * (groups.length - 1));
+  var bw = Math.max(6, Math.min(34, band - 8));
+  var ticks = roundTicks(Math.max.apply(null, groups.map(function (g) {
+    return Math.max.apply(null, g.years.map(function (y) { return y.avg; }));
+  })));
+  var top = ticks.top;
+
+  var s = "";
+  for (var v = 0; v <= top; v += ticks.step) {
+    var gy = PT + ih - (v / top) * ih;
+    s += '<line x1="' + PL + '" y1="' + gy + '" x2="' + (W - PR) + '" y2="' + gy +
+         '" stroke="var(--grid)" stroke-width="1"/>' +
+         '<text x="' + (PL - 9) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' +
+         moneyShort(v) + '</text>';
+  }
+
+  var x = PL;
+  groups.forEach(function (g, gi) {
+    var gx0 = x;
+    g.years.forEach(function (y) {
+      var bx = x + (band - bw) / 2, h = (y.avg / top) * ih, by = PT + ih - h;
+      s += '<path d="' + barUp(bx, by, bw, h, 4) + '" fill="' + g.colour + '"/>';
+      if (y.change !== null && Math.abs(y.change) >= 0.0005) {
+        s += '<text x="' + (bx + bw / 2) + '" y="' + (by - 7) + '" text-anchor="middle" font-size="10.5" ' +
+             'font-weight="700" fill="var(--text-secondary)" font-variant-numeric="tabular-nums">' +
+             pctLabel(y.change) + '</text>';
+      }
+      s += '<text x="' + (x + band / 2) + '" y="' + (PT + ih + 16) + '" text-anchor="middle" font-size="10.5" fill="var(--muted)">' +
+           "’" + String(y.y).slice(2) + '</text>';
+      var tip = '<div class="t-title">' + esc(g.short) + ' · ' + y.y + '</div>' +
+        '<div class="t-row"><i class="swatch" style="background:' + g.colour + '"></i>Regular pay<b>' + money(y.avg) + '/mo</b></div>' +
+        '<div class="t-row">Change on ' + (y.y - 1) + '<b>' + (y.change === null ? "first year here" : pctLabel(y.change)) + '</b></div>' +
+        '<div class="t-row">Bonus in the year<b>' + (y.bonus ? money(y.bonus) : "none") + '</b></div>' +
+        '<div class="t-row">Payslips<b>' + y.n + '</b></div>';
+      s += '<rect class="hit" x="' + x + '" y="' + PT + '" width="' + band + '" height="' + ih +
+           '" data-tip="' + esc(tip) + '"/>';
+      x += band;
+    });
+    // employer name under its own bars, with a bracket showing the span
+    var mid = (gx0 + x) / 2;
+    s += '<line x1="' + (gx0 + 3) + '" y1="' + (PT + ih + 24) + '" x2="' + (x - 3) + '" y2="' + (PT + ih + 24) +
+         '" stroke="' + g.colour + '" stroke-width="2" stroke-linecap="round"/>' +
+         '<text x="' + mid + '" y="' + (PT + ih + 40) + '" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--text-secondary)">' +
+         esc(g.short) + '</text>';
+    x += band * gapBands;
+  });
+  s += '<line x1="' + PL + '" y1="' + (PT + ih) + '" x2="' + (W - PR) + '" y2="' + (PT + ih) +
+       '" stroke="var(--baseline)" stroke-width="1"/>';
+
+  container.innerHTML =
+    '<div class="legend">' + groups.map(function (g) {
+      return '<span><i class="swatch" style="background:' + g.colour + '"></i>' + esc(g.short) + '</span>';
+    }).join("") + '</div>' +
+    '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Average regular monthly pay by year, per employer">' +
+    s + '</svg></div>';
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+}
+
+/* One bar per bonus payout, coloured by employer, each labelled with its amount. */
+function chartBonus(container, payouts, styles) {
+  var W = chartWidth(container), H = 230, PL = 62, PR = 12, PT = 26, PB = 36;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var band = iw / payouts.length;
+  var bw = Math.max(8, Math.min(46, band - 18));
+  var ticks = roundTicks(Math.max.apply(null, payouts.map(function (p) { return p.bonus; })));
+  var top = ticks.top;
+
+  var s = "";
+  for (var v = 0; v <= top; v += ticks.step) {
+    var gy = PT + ih - (v / top) * ih;
+    s += '<line x1="' + PL + '" y1="' + gy + '" x2="' + (W - PR) + '" y2="' + gy +
+         '" stroke="var(--grid)" stroke-width="1"/>' +
+         '<text x="' + (PL - 9) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' +
+         moneyShort(v) + '</text>';
+  }
+  payouts.forEach(function (p, i) {
+    var st = styles[p.company];
+    var bx = PL + band * i + (band - bw) / 2, h = (p.bonus / top) * ih, by = PT + ih - h;
+    s += '<path d="' + barUp(bx, by, bw, h, 4) + '" fill="' + st.colour + '"/>';
+    s += '<text x="' + (bx + bw / 2) + '" y="' + (by - 7) + '" text-anchor="middle" font-size="11" font-weight="700" ' +
+         'fill="var(--text-primary)" font-variant-numeric="tabular-nums">' + moneyShort(p.bonus) + '</text>';
+    s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (PT + ih + 16) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
+         monthShort(p.m) + ' ’' + p.m.slice(2, 4) + '</text>';
+    s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (PT + ih + 30) + '" text-anchor="middle" font-size="10.5" fill="var(--text-secondary)">' +
+         esc(st.short) + '</text>';
+    var tip = '<div class="t-title">' + monthLabel(p.m) + ' · ' + esc(st.short) + '</div>' +
+      '<div class="t-row"><i class="swatch" style="background:' + st.colour + '"></i>Bonus<b>' + money(p.bonus) + '</b></div>' +
+      (p.bonusNotes ? '<div class="t-row muted" style="font-size:12px">' + esc(p.bonusNotes) + '</div>' : '') +
+      '<div class="t-row">Gross that month<b>' + money(p.gross) + '</b></div>';
+    s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
+         '" data-tip="' + esc(tip) + '"/>';
+  });
+  s += '<line x1="' + PL + '" y1="' + (PT + ih) + '" x2="' + (W - PR) + '" y2="' + (PT + ih) +
+       '" stroke="var(--baseline)" stroke-width="1"/>';
+
+  var seen = {};
+  container.innerHTML =
+    '<div class="legend">' + payouts.filter(function (p) {
+      return seen[p.company] ? false : (seen[p.company] = true);
+    }).map(function (p) {
+      return '<span><i class="swatch" style="background:' + styles[p.company].colour + '"></i>' +
+             esc(styles[p.company].short) + '</span>';
+    }).join("") + '</div>' +
+    '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bonus payouts">' + s + '</svg></div>';
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+}
+
+function renderSalary() {
+  var slips = (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
+  var box = el("tab-salary");
+  if (!slips.length) {
+    box.innerHTML = '<div class="card"><h2>Salary</h2><div class="empty">No payslips in the spreadsheet yet.</div></div>';
+    return;
+  }
+  var meta = DATA.salaryMeta || {}, notes = meta.notes || {};
+  var styles = {};
+  slips.forEach(function (p) { employerStyle(p.company, styles, meta); });
+  function sum(rs, k) { return rs.reduce(function (t, r) { return t + (r[k] || 0); }, 0); }
+  function span(rs) { return monthLabel(rs[0].m) + " – " + monthLabel(rs[rs.length - 1].m); }
+
+  // employers in the order they employed you; a stint is consecutive slips
+  var groups = [];
+  slips.forEach(function (p) {
+    var g = groups[groups.length - 1];
+    if (!g || g.company !== p.company) {
+      g = { company: p.company, short: styles[p.company].short, colour: styles[p.company].colour, slips: [] };
+      groups.push(g);
+    }
+    g.slips.push(p);
+  });
+  groups.forEach(function (g) {
+    var byYear = {};
+    g.slips.forEach(function (p) { (byYear[p.m.slice(0, 4)] = byYear[p.m.slice(0, 4)] || []).push(p); });
+    var prev = null;
+    g.years = Object.keys(byYear).sort().map(function (y) {
+      var rs = byYear[y], a = sum(rs, "regular") / rs.length;
+      var row = { y: +y, avg: a, n: rs.length, bonus: sum(rs, "bonus"), change: prev ? a / prev - 1 : null };
+      prev = a;
+      return row;
+    });
+  });
+
+  var first = slips[0], last = slips[slips.length - 1];
+  var payouts = slips.filter(function (p) { return p.bonus > 0; });
+  var oneOffs = slips.filter(function (p) { return p.oneOff > 0; });
+  var bonusTotal = sum(slips, "bonus");
+  var cur = groups[groups.length - 1];
+
+  var empRows = groups.map(function (g) {
+    var n = g.slips.length;
+    return '<tr><td><i class="swatch" style="background:' + g.colour + ';display:inline-block;margin-right:8px"></i>' + esc(g.company) + '</td>' +
+      '<td>' + span(g.slips) + '</td><td class="num">' + n + '</td>' +
+      '<td class="num">' + money(sum(g.slips, "gross") / n) + '</td>' +
+      '<td class="num">' + money(sum(g.slips, "tax") / n) + '</td>' +
+      '<td class="num">' + money(sum(g.slips, "net") / n) + '</td>' +
+      '<td class="num">' + (sum(g.slips, "bonus") ? money(sum(g.slips, "bonus")) : '<span class="muted">none</span>') + '</td></tr>';
+  }).join("");
+
+  var slipRows = slips.slice().reverse().map(function (p) {
+    var extra = [];
+    if (p.bonus)   extra.push("bonus " + money(p.bonus));
+    if (p.arrears) extra.push("arrears " + money(p.arrears));
+    if (p.oneOff)  extra.push("one-off " + money(p.oneOff));
+    return '<tr><td>' + monthLabel(p.m) + '</td><td>' + esc(styles[p.company].short) + '</td>' +
+      '<td class="num">' + money(p.gross) + '</td><td class="num">' + money(p.tax) + '</td>' +
+      '<td class="num">' + money(p.pf) + '</td><td class="num">' + money(p.ded) + '</td>' +
+      '<td class="num"><b>' + money(p.net) + '</b></td>' +
+      '<td class="muted" style="font-size:12.5px">' + extra.join(" · ") + '</td></tr>';
+  }).join("");
+
+  var oneOffRows = oneOffs.map(function (p) {
+    return '<tr><td>' + monthLabel(p.m) + '</td><td>' + esc(styles[p.company].short) + '</td>' +
+      '<td class="desc">' + esc(p.oneOffNotes || "") + '</td><td class="num">' + money(p.oneOff) + '</td></tr>';
+  }).join("");
+
+  box.innerHTML =
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Regular pay now</div><div class="val">' + money(last.regular) + '</div>' +
+        '<div class="sub">a month, gross · ' + esc(styles[last.company].short) + ', ' + monthLabel(last.m) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Take-home now</div><div class="val">' + money(last.net) + '</div>' +
+        '<div class="sub">after ' + money(last.ded) + ' deductions</div></div>' +
+      '<div class="tile"><div class="lbl">Bonuses received</div><div class="val">' + money(bonusTotal) + '</div>' +
+        '<div class="sub">' + payouts.length + ' payouts since ' + (payouts.length ? payouts[0].m.slice(0, 4) : "—") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Growth since ' + first.m.slice(0, 4) + '</div><div class="val">' +
+        (last.regular / first.regular).toFixed(1) + '×</div>' +
+        '<div class="sub">regular pay ' + moneyShort(first.regular) + ' → ' + moneyShort(last.regular) + ' a month</div></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Year-on-year pay rise</h2>' +
+      '<p class="cap">Average regular monthly pay each year, grouped by employer. Bonus, arrears and ' +
+        'one-offs are left out, so a bonus month never looks like a raise. The label is the change on ' +
+        'the year before at the same employer. Tap a bar for detail.</p>' +
+      '<div id="sal-rise"></div>' +
+      '<p class="cap" style="margin:12px 0 0">First and last years at a firm are part-years.' +
+        (notes.rise ? ' ' + esc(notes.rise) : '') + '</p>' +
+    '</div>' +
+
+    '<div class="card"><h2>Bonuses</h2>' +
+      '<p class="cap">Bonus lines on the payslips, one bar per payout.' +
+        (notes.bonus ? ' ' + esc(notes.bonus) : '') + '</p>' +
+      (payouts.length ? '<div id="sal-bonus"></div>' : '<div class="empty">No bonus lines on any slip.</div>') +
+      (oneOffs.length
+        ? '<h2 style="margin-top:22px">Other one-off payments</h2>' +
+          '<p class="cap">Other one-off lines on the payslips, not counted as bonus.' +
+            (notes.oneOff ? ' ' + esc(notes.oneOff) : '') +
+            ' Back pay after a raise (arrears) is left out of both.</p>' +
+          '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th>Employer</th><th>What</th>' +
+          '<th class="num">Amount</th></tr></thead><tbody>' + oneOffRows + '</tbody></table></div>'
+        : '') +
+    '</div>' +
+
+    '<div class="card"><h2>By employer</h2>' +
+      '<p class="cap">Averages per payslip. Months with no slip in your email are simply missing, not counted as zero.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Employer</th><th>Period</th><th class="num">Slips</th>' +
+      '<th class="num">Avg gross</th><th class="num">Avg tax</th><th class="num">Avg take-home</th>' +
+      '<th class="num">Bonus total</th></tr></thead><tbody>' + empRows + '</tbody></table></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Every payslip</h2>' +
+      '<p class="cap">' + slips.length + ' slips, newest first.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th>Employer</th><th class="num">Gross</th>' +
+      '<th class="num">Income tax</th><th class="num">PF</th><th class="num">Deductions</th>' +
+      '<th class="num">Take-home</th><th></th></tr></thead><tbody>' + slipRows + '</tbody></table></div>' +
+    '</div>';
+
+  chartPayRise(el("sal-rise"), groups);
+  if (payouts.length) chartBonus(el("sal-bonus"), payouts, styles);
+}
+
 /* Money fronted for Amma and repaid over the following months. Both legs are
    tagged Transfer / Amma Receivable in the spreadsheet and excluded from the
    charts, so they appear nowhere else in this app -- which is exactly why this
@@ -1670,7 +1961,7 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "spending", "txns", "assets", "insurance", "amma"].forEach(function (t) {
+  ["overview", "spending", "txns", "assets", "insurance", "salary", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
@@ -1678,6 +1969,7 @@ function switchTab(name) {
   if (name === "txns")     renderTxns();
   if (name === "assets")   renderAssets();
   if (name === "insurance") renderInsurance();
+  if (name === "salary")    renderSalary();
   if (name === "amma")      renderAmma();
   window.scrollTo(0, 0);
 }
