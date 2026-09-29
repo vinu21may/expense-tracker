@@ -2048,7 +2048,7 @@ function chartPayRise(container, groups) {
         if (y.avg > 0) {
           s += '<text x="' + (bx + bwHere / 2) + '" y="' + (by - 6) + '" text-anchor="middle" ' +
                'font-size="10" fill="var(--text-secondary)" font-variant-numeric="tabular-nums">' +
-               moneyShort(y.avg) + '</text>';
+               (y.approx ? '≈' : '') + moneyShort(y.avg) + '</text>';
         } else noInr = true;
       }
       // the change on the year before, in its own row under the year labels, so
@@ -2066,7 +2066,9 @@ function chartPayRise(container, groups) {
           '<div class="t-row"><i class="swatch" style="background:' + g.colour + '"></i>Pay at joining<b>' +
             (y.avg > 0 ? money(y.avg) + '/mo' : 'no ₹ monthly figure') + '</b></div>' +
           '<div class="t-row muted" style="font-size:12px">' + esc(y.pay || "") + '</div>' +
-          '<div class="t-row muted" style="font-size:12px">From the offer or appointment letter</div>'
+          '<div class="t-row muted" style="font-size:12px">' + (y.approx
+            ? 'An estimate in rupees, worked out as described above'
+            : 'From the offer or appointment letter') + '</div>'
         : '<div class="t-title">' + esc(g.short) + ' · ' + y.y + '</div>' +
         '<div class="t-row"><i class="swatch" style="background:' + g.colour + '"></i>Regular pay<b>' + money(y.avg) + '/mo</b></div>' +
         '<div class="t-row">Change on ' + (y.y - 1) + '<b>' + (y.change === null ? "first year here" : pctLabel(y.change)) + '</b></div>' +
@@ -2079,7 +2081,9 @@ function chartPayRise(container, groups) {
     // employer name under its own bars, with a bracket showing the span; names
     // alternate between two rows so single-bar employers side by side never collide
     var mid = (gx0 + x) / 2, ny = PT + ih + (gi % 2 ? 72 : 56);
-    if (noInr) {
+    // the note only when the whole employer has no rupee figure; a single blank
+    // year beside a drawn bar is explained by its tooltip instead
+    if (noInr && !g.years.some(function (y) { return y.avg > 0; })) {
       s += '<text x="' + mid + '" y="' + (PT + ih - 6) + '" text-anchor="middle" font-size="10" ' +
            'fill="var(--muted)">no ₹</text>';
     }
@@ -2286,7 +2290,8 @@ function renderSalary() {
     '<div class="card"><h2>Year-on-year pay rise</h2>' +
       '<p class="cap">Every job since you started. Coloured bars: average regular monthly pay each year from ' +
         'payslips; the % under each year is the change on the year before at the same employer (bonus, arrears and ' +
-        'one-offs left out). Grey bars: pay at joining from the offer letter. Tap a bar for detail.</p>' +
+        'one-offs left out). Grey bars: pay at joining from the offer letter; ≈ marks an estimate (a salary in another ' +
+        'currency, or fees averaged per month). Tap a bar for detail.</p>' +
       '<div id="sal-rise"></div>' +
       '<p class="cap" style="margin:12px 0 0">First and last years at a firm are part-years.' +
         (notes.rise ? ' ' + esc(notes.rise) : '') + '</p>' +
@@ -2340,7 +2345,10 @@ function renderSalary() {
     }
     var yr = +(j.from.slice(-4)) || 0;
     var last = riseGroups[riseGroups.length - 1];
-    var bar = { y: yr, avg: j.monthly || 0, n: 0, change: null, bonus: 0, letter: true, role: j.role, pay: j.pay };
+    // a figure marked "≈" in the data is an estimate (a foreign-currency salary
+    // converted, or fees averaged per month), not a salary stated in rupees
+    var bar = { y: yr, avg: j.monthly || 0, n: 0, change: null, bonus: 0, letter: true, role: j.role, pay: j.pay,
+                approx: /^≈/.test(j.pay || "") };
     if (last && last.letter && last.company === j.employer) { last.years.push(bar); return; }
     // one word under a narrow grey bar (the tooltip carries the full name)
     riseGroups.push({ company: j.employer, short: j.employer.split(" (")[0].split(" ")[0], full: j.employer,
