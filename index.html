@@ -169,6 +169,20 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
            font-size: 12.5px; white-space: nowrap; }
 }
 
+/* ---------------------------------------------- exit values (Assets tab) */
+.exit { border-top: 1px solid var(--grid); padding: 14px 0; }
+.exit:first-of-type { border-top: none; }
+.exit-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; }
+.exit-head b { font-size: 15px; }
+.exit-pair { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .exit-pair { grid-template-columns: 1fr 1fr; } }
+.exit-box { background: var(--plane); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.exit-box .lbl { font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.exit-box .v { font-size: 20px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.exit-box .t { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.exit-box .why { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.exit .tax { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; line-height: 1.4; }
+
 /* ------------------------------------------------------------ stat tiles */
 .tile {
   background: var(--surface-1); border: 1px solid var(--border);
@@ -1471,6 +1485,51 @@ function renderAssets() {
         : '<div class="empty">No active EMI loans.</div>') +
     '</div>';
 
+  /* What each holding pays if cashed in today, and at maturity, with the
+     taxable part of each. Worked out in the workbook's Exit Values sheet, which
+     states its reasoning per holding. A fixed deposit's early-exit figure
+     changes daily, so it is recomputed here from its terms: interest for the
+     days run at the contract rate less the usual 1-point penalty -- an upper
+     bound, since the bank uses its lower short-period rate. */
+  var FD_PENALTY = 1;
+  var exits = (DATA.exitValues || []).map(function (x) {
+    var y = {};
+    for (var k in x) y[k] = x[k];
+    if (x.rate && x.start && x.principal) {
+      var days = Math.max(0, Math.round((new Date(today) - new Date(x.start)) / 86400000));
+      var early = x.principal * (x.rate - FD_PENALTY) / 100 * days / 365;
+      y.today = Math.round(x.principal + early);
+      y.todayTaxable = Math.round(early);
+      y.todayWhy = "Breaking it early pays interest only for the " + days + " days it has run, at the " +
+        "shorter-period rate less a " + FD_PENALTY + "% penalty. Shown at " + (x.rate - FD_PENALTY).toFixed(2) +
+        "%, so this is the most you would get.";
+    }
+    return y;
+  });
+  var nowTotal = exits.reduce(function (t, x) { return t + (x.today || 0); }, 0);
+  var nowTax = exits.reduce(function (t, x) { return t + (x.todayTaxable || 0); }, 0);
+  var locked = exits.filter(function (x) { return x.today === null; });
+  var lockedTotal = locked.reduce(function (t, x) { return t + (x.book || 0); }, 0);
+
+  function exitBox(label, value, note, taxable, why, when) {
+    return '<div class="exit-box"><div class="lbl">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
+      (value !== null && value !== undefined
+        ? '<div class="v">' + money(value) + '</div>' +
+          '<div class="t">Taxable: <b>' + (taxable === null || taxable === undefined ? '<span class="muted">not known</span>'
+                                          : money(taxable)) + '</b></div>'
+        : '<div class="v muted">' + esc(note || "—") + '</div>') +
+      '<div class="why">' + esc(why) + '</div></div>';
+  }
+  var exitHtml = exits.map(function (x) {
+    return '<div class="exit"><div class="exit-head"><b>' + esc(x.name) + '</b>' +
+        '<span class="muted" style="font-size:12.5px">' + esc(x.kind) + ' · book value ' + money(x.book) + '</span></div>' +
+      '<div class="exit-pair">' +
+        exitBox("If cashed in today", x.today, x.todayNote, x.todayTaxable, x.todayWhy, "") +
+        exitBox("At maturity", x.maturity, x.maturityNote, x.maturityTaxable, x.maturityWhy, x.matures) +
+      '</div>' +
+      '<div class="tax"><b>Tax:</b> ' + esc(x.tax) + '</div></div>';
+  }).join("");
+
   el("tab-assets").innerHTML =
     '<div class="card"><div class="total">' +
       '<div class="headline"><div class="lbl">Total invested</div>' +
@@ -1485,6 +1544,22 @@ function renderAssets() {
     '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Cash in Bank tab.</p>' +
     '</div>' +
+
+    (exits.length
+      ? '<div class="card"><h2>Cash in today, or hold to maturity</h2>' +
+          '<p class="cap">What each holding would pay if you cashed it in today, and what it pays at ' +
+          'maturity, with the part that counts as taxable income. Estimates to plan with, not tax advice.' +
+          (exits[0].asOf ? ' Worked out on ' + esc(exits[0].asOf.split("-").reverse().join("/")) +
+            '; fixed deposits are recalculated each day.' : '') + '</p>' +
+          '<div class="grid k2" style="margin-bottom:6px">' +
+            '<div class="exit-box"><div class="lbl">You could get today</div><div class="v">' + money(nowTotal) + '</div>' +
+              '<div class="t">of which taxable ' + money(nowTax) + '</div></div>' +
+            '<div class="exit-box"><div class="lbl">Locked until maturity</div><div class="v">' + money(lockedTotal) + '</div>' +
+              '<div class="t">' + locked.map(function (x) { return esc(x.name.split(" - ")[0]); }).join(", ") + '</div></div>' +
+          '</div>' +
+          exitHtml +
+        '</div>'
+      : '') +
 
     '<div class="grid k4" style="margin-bottom:16px">' +
       '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
