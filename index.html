@@ -303,7 +303,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
-      <button role="tab" data-tab="accounts"  aria-selected="false">Accounts</button>
+      <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
@@ -1373,7 +1373,9 @@ function renderAssets() {
   });
   var savingsTotal = savingsAccts.reduce(function (s, a) { return s + a.value; }, 0);
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
-  var totalInvested = fdTotal + invValue + savingsTotal;
+  // Savings-account cash is shown on the Cash in Bank tab, not counted here:
+  // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
+  var totalInvested = fdTotal + invValue;
 
   var emiP = activeEmis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = activeEmis.reduce(function (s, e) { return s + e.balI; }, 0);
@@ -1478,12 +1480,10 @@ function renderAssets() {
           '<div class="p-val">' + money(fdTotal) + '</div></div>' +
         '<div class="part"><div class="p-lbl">Investments</div>' +
           '<div class="p-val">' + money(invValue) + '</div></div>' +
-        '<div class="part"><div class="p-lbl">In savings accounts</div>' +
-          '<div class="p-val' + (savingsTotal ? '' : ' muted-val') + '">' + money(savingsTotal) + '</div></div>' +
       '</div>' +
     '</div>' +
-    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal, investments at their last stated value, ' +
-      'and savings at the bank balances shown on the Accounts tab.</p>' +
+    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal and investments at their last stated value. ' +
+      'Cash in savings accounts is not counted here; it is on the Cash in Bank tab.</p>' +
     '</div>' +
 
     '<div class="grid k4" style="margin-bottom:16px">' +
@@ -1522,6 +1522,40 @@ function renderAssets() {
     '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>';
 }
 
+/* The next premium date for a policy, and the days until it. A dated renewal
+   is used as is. Otherwise the renewal cell describes a rhythm: "24th monthly"
+   (the next 24th) or "21 Jan / 21 Jul" (whichever of those comes next). Text
+   like "From issue date" has no date yet and returns null. */
+function nextPremium(p, today) {
+  var t = new Date(today + "T00:00:00");
+  function out(d, amount, every) {
+    var iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+              String(d.getDate()).padStart(2, "0");
+    return { date: iso, days: Math.round((d - t) / 86400000), amount: amount, every: every };
+  }
+  if (p.renewal) return out(new Date(p.renewal + "T00:00:00"), p.premium, "");
+  var txt = p.renewalText || "";
+  var m = txt.match(/(\d{1,2})(?:st|nd|rd|th)?\s+monthly/i);
+  if (m) {
+    var d = new Date(t.getFullYear(), t.getMonth(), +m[1]);
+    if (d < t) d = new Date(t.getFullYear(), t.getMonth() + 1, +m[1]);
+    return out(d, p.premium / 12, "monthly");
+  }
+  var dates = [], re = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi, x;
+  while ((x = re.exec(txt))) dates.push([+x[1], MONTH_NAMES.indexOf(x[2].slice(0, 1).toUpperCase() + x[2].slice(1, 3).toLowerCase())]);
+  if (dates.length) {
+    var best = null;
+    dates.forEach(function (dm) {
+      var c = new Date(t.getFullYear(), dm[1], dm[0]);
+      if (c < t) c = new Date(t.getFullYear() + 1, dm[1], dm[0]);
+      if (!best || c < best) best = c;
+    });
+    return out(best, p.premium / dates.length,
+               dates.length === 2 ? "half-yearly" : dates.length === 4 ? "quarterly" : "");
+  }
+  return null;
+}
+
 function renderInsurance() {
   var today = new Date().toISOString().slice(0, 10);
 
@@ -1535,11 +1569,15 @@ function renderInsurance() {
     return a.renewal < b.renewal ? -1 : a.renewal > b.renewal ? 1 : 0;
   });
   var polPrem = pols.reduce(function (s, p) { return s + p.premium; }, 0);
-  var polSoon = pols.filter(function (p) {
-    if (!p.renewal) return false;
-    var d = Math.round((new Date(p.renewal) - new Date(today)) / 86400000);
-    return d <= 45;
-  }).length;
+  pols.forEach(function (p) { p.next = nextPremium(p, today); });
+  // soonest premium first; policies with no date yet (awaiting issue) go last
+  pols.sort(function (a, b) {
+    if (!a.next && !b.next) return a.name.localeCompare(b.name);
+    if (!a.next) return 1;
+    if (!b.next) return -1;
+    return a.next.days - b.next.days;
+  });
+  var polSoon = pols.filter(function (p) { return p.next && p.next.days <= 45; }).length;
   function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
 
   /* Health, Life and Vehicle each get their own box.
@@ -1554,25 +1592,26 @@ function renderInsurance() {
   var GROUPS = [
     { key: "health",  title: "Health",  kinds: ["Health"] },
     { key: "life",    title: "Life",    kinds: ["Life", "Life (ULIP)"] },
-    { key: "vehicle", title: "Vehicle", kinds: ["Motor", "Personal Accident"] },
-    { key: "other",   title: "Other cover", kinds: [] }
+    { key: "vehicle", title: "Motor",   kinds: ["Motor", "Personal Accident"] },
+    { key: "other",   title: "Others",  kinds: [] }
   ];
 
   function groupOf(kind) {
     for (var i = 0; i < GROUPS.length; i++) {
       if (GROUPS[i].kinds.indexOf(kind) >= 0) return GROUPS[i].key;
     }
+    // any "Life (...)" variant -- ULIP, savings, term -- is life cover
+    if (/^life\b/i.test(kind || "")) return "life";
     return "other";
   }
 
   function polBlock(p) {
-    var days = p.renewal ? Math.round((new Date(p.renewal) - new Date(today)) / 86400000) : null;
-    // no renewal date means the policy just runs on (monthly term premium, the
-    // half-yearly ULIP) — Cover Period already says how, so don't echo it
-    var status = days === null
-      ? '<span class="pill ok">ongoing</span>'
-      : days < 0 ? '<span class="pill warn">expired</span>'
-      : '<span class="pill' + (days <= 45 ? " warn" : "") + '">' + days + ' days</span>';
+    var n = p.next;
+    var status = !n
+      ? '<span class="pill">no date yet</span>'
+      : n.days < 0 ? '<span class="pill bad">overdue ' + (-n.days) + ' days</span>'
+      : '<span class="pill' + (n.days <= 45 ? " warn" : "") + '">' +
+          (n.days === 0 ? 'due today' : n.days + (n.days === 1 ? ' day' : ' days')) + '</span>';
 
     // a policy that renews on a date has a period with two ends; one that just
     // runs on has a start and a rhythm, so say the rhythm rather than invent an end
@@ -1596,6 +1635,10 @@ function renderInsurance() {
           ? '<span class="muted">not stated</span>' : '<b>' + money(p.sum) + '</b>') +
         field("Annual Premium", money(p.premium) +
           (p.paidFrom ? ' <span class="muted">· ' + esc(p.paidFrom) + '</span>' : "")) +
+        field("Next Premium", n
+          ? '<b>' + longDate(n.date) + '</b> <span class="muted">· ' + money(n.amount) +
+            (n.every ? ' (' + n.every + ')' : '') + '</span>'
+          : '<span class="muted">' + esc(p.renewalText || "not stated") + '</span>') +
         field("Cover Period", period) +
       '</dl>' +
     '</div>';
@@ -1611,7 +1654,7 @@ function renderInsurance() {
         '<div class="sub">' + (expired ? expired + ' expired' : 'none expired') + '</div></div>' +
       '<div class="tile"><div class="lbl">Premium a year</div><div class="val">' + money(polPrem) + '</div>' +
         '<div class="sub">across all policies</div></div>' +
-      '<div class="tile"><div class="lbl">Renewing soon</div><div class="val">' + polSoon + '</div>' +
+      '<div class="tile"><div class="lbl">Premiums due soon</div><div class="val">' + polSoon + '</div>' +
         '<div class="sub">within 45 days</div></div>' +
     '</div>' +
 
@@ -1625,14 +1668,13 @@ function renderInsurance() {
           var mine = pols.filter(function (p) { return groupOf(p.kind) === g.key; });
           if (!mine.length) return "";
           var prem = mine.reduce(function (s, p) { return s + p.premium; }, 0);
-          var soon = mine.filter(function (p) {
-            if (!p.renewal) return false;
-            return Math.round((new Date(p.renewal) - new Date(today)) / 86400000) <= 45;
-          }).length;
+          var soon = mine.filter(function (p) { return p.next && p.next.days <= 45; }).length;
+          var first = mine[0].next;          // mine is already soonest-first
           return '<div class="card"><h2>' + g.title + '</h2>' +
             '<p class="cap">' + mine.length + (mine.length === 1 ? ' policy' : ' policies') +
               ' · ' + money(prem) + ' a year' +
-              (soon ? ' · <b>' + soon + ' renewing within 45 days</b>' : '') + '</p>' +
+              (first ? ' · next premium in <b>' + first.days + (first.days === 1 ? ' day' : ' days') + '</b>' : '') +
+              (soon ? ' · <b>' + soon + ' due within 45 days</b>' : '') + '</p>' +
             mine.map(polBlock).join("") +
           '</div>';
         }).join("")
