@@ -1818,13 +1818,14 @@ function chartBonus(container, payouts, styles) {
     s += '<text x="' + (bx + bw / 2) + '" y="' + (by - 7) + '" text-anchor="middle" font-size="11" font-weight="700" ' +
          'fill="var(--text-primary)" font-variant-numeric="tabular-nums">' + moneyShort(p.bonus) + '</text>';
     s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (PT + ih + 16) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
-         monthShort(p.m) + ' ’' + p.m.slice(2, 4) + '</text>';
+         (p.extra ? p.m.slice(0, 4) + " †" : monthShort(p.m) + ' ’' + p.m.slice(2, 4)) + '</text>';
     s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (PT + ih + 30) + '" text-anchor="middle" font-size="10.5" fill="var(--text-secondary)">' +
          esc(st.short) + '</text>';
-    var tip = '<div class="t-title">' + monthLabel(p.m) + ' · ' + esc(st.short) + '</div>' +
+    var tip = '<div class="t-title">' + esc(p.label || monthLabel(p.m)) + ' · ' + esc(st.short) + '</div>' +
       '<div class="t-row"><i class="swatch" style="background:' + st.colour + '"></i>Bonus<b>' + money(p.bonus) + '</b></div>' +
       (p.bonusNotes ? '<div class="t-row muted" style="font-size:12px">' + esc(p.bonusNotes) + '</div>' : '') +
-      '<div class="t-row">Gross that month<b>' + money(p.gross) + '</b></div>';
+      (p.extra ? '<div class="t-row muted" style="font-size:12px">No payslip on file for this month</div>'
+               : '<div class="t-row">Gross that month<b>' + money(p.gross) + '</b></div>');
     s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
          '" data-tip="' + esc(tip) + '"/>';
   });
@@ -1858,6 +1859,22 @@ function renderSalary() {
   function sum(rs, k) { return rs.reduce(function (t, r) { return t + (r[k] || 0); }, 0); }
   function span(rs) { return monthLabel(rs[0].m) + " – " + monthLabel(rs[rs.length - 1].m); }
 
+  /* Bonuses known from a bonus statement or tax sheet, paid in a month whose
+     slip is not on file. They count in every bonus figure, never in pay. */
+  var extra = (DATA.salaryExtraBonus || []).map(function (b) {
+    var mi = -1;
+    MONTH_NAMES.forEach(function (n, i) { if (mi < 0 && b.label.indexOf(n) >= 0) mi = i; });
+    employerStyle(b.company, styles, meta);
+    return { company: b.company, m: b.year + "-" + String(mi < 0 ? 1 : mi + 1).padStart(2, "0"),
+             label: b.label, bonus: b.bonus, bonusNotes: b.notes.split("; source")[0], extra: true };
+  });
+  function extraFor(company, year) {
+    return extra.filter(function (b) {
+      return b.company === company && (year === undefined || +b.m.slice(0, 4) === year);
+    }).reduce(function (t, b) { return t + b.bonus; }, 0);
+  }
+
+
   // employers in the order they employed you; a stint is consecutive slips
   var groups = [];
   slips.forEach(function (p) {
@@ -1874,16 +1891,18 @@ function renderSalary() {
     var prev = null;
     g.years = Object.keys(byYear).sort().map(function (y) {
       var rs = byYear[y], a = sum(rs, "regular") / rs.length;
-      var row = { y: +y, avg: a, n: rs.length, bonus: sum(rs, "bonus"), change: prev ? a / prev - 1 : null };
+      var row = { y: +y, avg: a, n: rs.length, bonus: sum(rs, "bonus") + extraFor(g.company, +y),
+                  change: prev ? a / prev - 1 : null };
       prev = a;
       return row;
     });
   });
 
   var first = slips[0], last = slips[slips.length - 1];
-  var payouts = slips.filter(function (p) { return p.bonus > 0; });
+  var payouts = slips.filter(function (p) { return p.bonus > 0; }).concat(extra)
+    .sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
   var oneOffs = slips.filter(function (p) { return p.oneOff > 0; });
-  var bonusTotal = sum(slips, "bonus");
+  var bonusTotal = sum(payouts, "bonus");
   var cur = groups[groups.length - 1];
 
   var empRows = groups.map(function (g) {
@@ -1893,7 +1912,32 @@ function renderSalary() {
       '<td class="num">' + money(sum(g.slips, "gross") / n) + '</td>' +
       '<td class="num">' + money(sum(g.slips, "tax") / n) + '</td>' +
       '<td class="num">' + money(sum(g.slips, "net") / n) + '</td>' +
-      '<td class="num">' + (sum(g.slips, "bonus") ? money(sum(g.slips, "bonus")) : '<span class="muted">none</span>') + '</td></tr>';
+      '<td class="num">' + (sum(g.slips, "bonus") + extraFor(g.company)
+        ? money(sum(g.slips, "bonus") + extraFor(g.company)) : '<span class="muted">none</span>') + '</td></tr>';
+  }).join("");
+
+  /* Every job, from offer and relieving letters. For employers with payslips,
+     regular monthly pay at the first and last slip stands in for the
+     letter's figure. */
+  var career = DATA.salaryCareer || [];
+  var careerRows = career.map(function (j) {
+    // average regular pay in the first and last calendar year of slips: a
+    // single slip can be a part-month or a set-up month, a year's average isn't
+    var g = groups.filter(function (x) { return x.company === j.employer; })[0];
+    var pay = g
+      ? (j.monthly
+          ? money(j.monthly) + ' at joining → ' + money(g.years[g.years.length - 1].avg) +
+            '<div class="muted" style="font-size:12px">joining pay from the letter; then average regular monthly pay in ' +
+              g.years[g.years.length - 1].y + ' from payslips</div>'
+          : money(g.years[0].avg) + ' → ' + money(g.years[g.years.length - 1].avg) +
+            '<div class="muted" style="font-size:12px">average regular monthly pay, ' + g.years[0].y + ' → ' +
+              g.years[g.years.length - 1].y + ', from payslips</div>')
+      : j.monthly
+        ? money(j.monthly) + '<div class="muted" style="font-size:12px">' + esc(j.pay) + '</div>'
+        : '<span class="muted">' + esc(j.pay) + '</span>';
+    return '<tr><td><b>' + esc(j.employer) + '</b><div class="muted" style="font-size:12px">' + esc(j.role) + '</div></td>' +
+      '<td style="white-space:nowrap">' + esc(j.from) + ' – ' + esc(j.to) + '</td>' +
+      '<td class="desc">' + pay + '</td></tr>';
   }).join("");
 
   var slipRows = slips.slice().reverse().map(function (p) {
@@ -1950,11 +1994,19 @@ function renderSalary() {
     '</div>' +
 
     '<div class="card"><h2>By employer</h2>' +
-      '<p class="cap">Averages per payslip. Months with no slip in your email are simply missing, not counted as zero.</p>' +
+      '<p class="cap">Averages per payslip. Months with no payslip on file are simply missing, not counted as zero.</p>' +
       '<div class="tbl-scroll"><table><thead><tr><th>Employer</th><th>Period</th><th class="num">Slips</th>' +
       '<th class="num">Avg gross</th><th class="num">Avg tax</th><th class="num">Avg take-home</th>' +
       '<th class="num">Bonus total</th></tr></thead><tbody>' + empRows + '</tbody></table></div>' +
     '</div>' +
+
+    (career.length
+      ? '<div class="card"><h2>Career since ' + esc(career[0].from.slice(-4)) + '</h2>' +
+          '<p class="cap">Every job, from offer, appointment and relieving letters. Pay is as stated ' +
+          'when you joined; where payslips exist, the average regular monthly pay in the first and last year.</p>' +
+          '<div class="tbl-scroll"><table><thead><tr><th>Employer</th><th>Period</th><th>Pay</th></tr></thead>' +
+          '<tbody>' + careerRows + '</tbody></table></div></div>'
+      : '') +
 
     '<div class="card"><h2>Every payslip</h2>' +
       '<p class="cap">' + slips.length + ' slips, newest first.</p>' +
