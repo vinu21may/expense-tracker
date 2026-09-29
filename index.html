@@ -939,6 +939,27 @@ function interestTaxCards() {
    yours to pay. Only FDs held now are counted -- interest from FDs that closed
    earlier in the year is not in the data. */
 var FD_TDS_RATE = 10, FD_TDS_LIMIT = 50000;
+
+/* FD interest falling in FY y0-(y0+1), and the TDS banks deduct on it.
+   Shared by the FD card and the year's tax card so the two always agree. */
+function fdYear(y0) {
+  var DAY = 86400000, byBank = {}, interest = 0;
+  (DATA.fds || []).forEach(function (f) {
+    var a = new Date(f.start + "T00:00:00"), b = new Date(f.maturity + "T00:00:00");
+    var days = Math.round((b - a) / DAY);
+    if (!(days > 0)) return;
+    var lo = Math.max(a, new Date(y0, 3, 1)), hi = Math.min(b, new Date(y0 + 1, 3, 1));
+    var share = hi > lo ? f.interest * Math.round((hi - lo) / DAY) / days : 0;
+    interest += share;
+    var k = f.bank || "bank";
+    byBank[k] = (byBank[k] || 0) + share;
+  });
+  var tds = Object.keys(byBank).reduce(function (t, k) {
+    return t + (byBank[k] > FD_TDS_LIMIT ? byBank[k] * FD_TDS_RATE / 100 : 0);
+  }, 0);
+  return { interest: interest, tds: tds };
+}
+
 function fdInterestTaxCard() {
   var tx = DATA.exitTax, fds = DATA.fds || [];
   if (!tx || !fds.length) return "";
@@ -954,13 +975,8 @@ function fdInterestTaxCard() {
   var now = new Date(), y0 = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   function fyName(y) { return "FY " + y + "-" + String(y + 1).slice(2); }
   var rows = fds.map(function (f) { return { f: f, now: fyShare(f, y0), next: fyShare(f, y0 + 1) }; });
-  var total = rows.reduce(function (t, r) { return t + r.now; }, 0);
+  var fy = fdYear(y0), total = fy.interest, tds = fy.tds;
   var next = rows.reduce(function (t, r) { return t + r.next; }, 0);
-  var byBank = {};
-  rows.forEach(function (r) { var k = r.f.bank || "bank"; byBank[k] = (byBank[k] || 0) + r.now; });
-  var tds = Object.keys(byBank).reduce(function (t, k) {
-    return t + (byBank[k] > FD_TDS_LIMIT ? byBank[k] * FD_TDS_RATE / 100 : 0);
-  }, 0);
   var tax = total * mult;
   var list = rows.map(function (r) {
     return '<tr><td>' + esc((r.f.bank ? r.f.bank + " " : "") + r.f.id) + '<div class="muted" style="font-size:12px">' +
@@ -986,6 +1002,73 @@ function fdInterestTaxCard() {
     '</div>' +
     '<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>FD</th><th class="num">Interest ' + fyName(y0) +
       '</th><th class="num">Tax</th><th class="num">Interest ' + fyName(y0 + 1) + '</th></tr></thead><tbody>' + list +
+    '</tbody></table></div></div>';
+}
+
+/* The year's income tax in one place: salary tax (deducted by the employer),
+   plus tax on interest from holdings that pay it out and from FDs, split into
+   what is already deducted at source and what is left to pay. Salary for the
+   rest of the year is projected at the latest slip's monthly tax -- employers
+   re-balance it through the year (e.g. after a bonus), so it is an estimate. */
+function yearTaxCard() {
+  var tx = DATA.exitTax;
+  if (!tx) return "";
+  var mult = tx.slab / 100 * (1 + tx.cess / 100);
+  var now = new Date(), y0 = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  var fyFrom = y0 + "-04", fyTo = (y0 + 1) + "-03";
+  var fyName = "FY " + y0 + "-" + String(y0 + 1).slice(2);
+
+  // salary: slips so far this year, plus the remaining months at the latest rate
+  var slips = (DATA.salary || []).filter(function (p) { return p.m >= fyFrom && p.m <= fyTo; });
+  var salSoFar = slips.reduce(function (t, p) { return t + (p.tax || 0); }, 0);
+  var lastSlip = slips[slips.length - 1];
+  var left = 0;
+  if (lastSlip) {
+    var ly = +lastSlip.m.slice(0, 4), lm = +lastSlip.m.slice(5, 7);
+    left = (y0 + 1 - ly) * 12 + (3 - lm);                 // months after the last slip to March
+  }
+  var salYear = salSoFar + (lastSlip ? left * lastSlip.tax : 0);
+
+  // interest paid out by holdings (54EC-type): the payout(s) made this year
+  var paidOut = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; });
+  var poTax = paidOut.reduce(function (t, x) { return t + (x.interestThisFY || 0) * mult; }, 0);
+
+  // FDs: same accrual as the FD card
+  var fd = fdYear(y0), fdTax = fd.interest * mult;
+
+  var total = salYear + poTax + fdTax;
+  var deducted = salYear + fd.tds;
+  var toPay = total - deducted;
+  function row(name, tax, atSource, note) {
+    return '<tr><td>' + name + (note ? '<div class="muted" style="font-size:12px">' + note + '</div>' : '') + '</td>' +
+      '<td class="num">' + money(tax) + '</td><td class="num">' + money(atSource) + '</td>' +
+      '<td class="num"><b>' + money(tax - atSource) + '</b></td></tr>';
+  }
+  return '<div class="card"><h2>Tax for the year · ' + fyName + '</h2>' +
+    '<p class="cap">Estimated income tax for the year at your ' + tx.slab + '% slab plus ' + tx.cess + '% cess. ' +
+      'Salary tax is deducted by your employer; tax on interest is mostly yours to pay through advance tax ' +
+      '(instalments 15 Jun, 15 Sep, 15 Dec, 15 Mar) or with your return. Estimates to plan with, not tax advice.</p>' +
+    '<div class="grid k4">' +
+      '<div class="exit-box"><div class="lbl">Total tax for the year</div><div class="v">' + money(total) + '</div>' +
+        '<div class="t">salary + interest</div></div>' +
+      '<div class="exit-box"><div class="lbl">Deducted at source</div><div class="v">' + money(deducted) + '</div>' +
+        '<div class="t">salary tax (' + money(salSoFar) + ' taken so far) + bank TDS on FDs</div></div>' +
+      '<div class="exit-box"><div class="lbl">Left for you to pay</div><div class="v">' + money(toPay) + '</div>' +
+        '<div class="t">tax on interest not covered by TDS</div></div>' +
+      '<div class="exit-box"><div class="lbl">Salary tax this year</div><div class="v">' + money(salYear) + '</div>' +
+        '<div class="t">' + slips.length + ' slips so far' + (left ? ' + ' + left + ' months at ' + money(lastSlip.tax) : '') + '</div></div>' +
+    '</div>' +
+    '<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>Source</th><th class="num">Tax</th>' +
+      '<th class="num">Deducted at source</th><th class="num">Left to pay</th></tr></thead><tbody>' +
+      row('Salary', salYear, salYear, money(salSoFar) + ' deducted Apr to ' + (lastSlip ? monthLabel(lastSlip.m) : '—') +
+        (left ? '; rest projected at the current monthly rate' : '')) +
+      paidOut.map(function (x) {
+        return row(esc(x.name) + ' interest', (x.interestThisFY || 0) * mult, 0,
+                   money(x.interestThisFY || 0) + ' paid this year; no TDS');
+      }).join("") +
+      row('Fixed deposit interest', fdTax, fd.tds, money(fd.interest) + ' interest building up this year; bank TDS estimated') +
+      '<tr><td><b>Total</b></td><td class="num"><b>' + money(total) + '</b></td><td class="num"><b>' + money(deducted) +
+        '</b></td><td class="num"><b>' + money(toPay) + '</b></td></tr>' +
     '</tbody></table></div></div>';
 }
 
@@ -1038,6 +1121,7 @@ function renderOverview() {
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
 
+    yearTaxCard() +
     interestTaxCards() +
     fdInterestTaxCard() +
 
