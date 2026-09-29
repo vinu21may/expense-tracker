@@ -900,6 +900,37 @@ function monthOptions(keys, sel, includeAll, allLabel) {
   return o;
 }
 
+/* Holdings that pay out taxable interest along the way (from the Exit Values
+   sheet), with the tax at the workbook's slab. Names, amounts and rules all
+   come from data.json; nothing here names a holding or a rate. */
+function interestTaxCards() {
+  var tx = DATA.exitTax;
+  if (!tx) return "";
+  var mult = tx.slab / 100 * (1 + tx.cess / 100);
+  var t = function (v) { return Math.round((v || 0) * mult); };
+  var now = new Date();
+  var fy0 = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  var fy = "FY " + fy0 + "-" + String(fy0 + 1).slice(2);
+  function longD(iso) { return iso ? dayLabel(iso) + " " + iso.slice(0, 4) : "—"; }
+  return (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; }).map(function (x) {
+    var left = (x.beforeTaxable || 0) + (x.maturityTaxable || 0);
+    return '<div class="card"><h2>Tax on ' + esc(x.name) + ' interest</h2>' +
+      '<p class="cap">Tax at your ' + tx.slab + '% slab plus ' + tx.cess + '% cess. ' +
+        esc(x.tax.split(" Total interest still to come")[0]) + '</p>' +
+      '<div class="grid k4">' +
+        '<div class="exit-box"><div class="lbl">Tax this year · ' + fy + '</div><div class="v">' + money(t(x.interestThisFY)) + '</div>' +
+          '<div class="t">on ' + money(x.interestThisFY) + (x.interestThisFYDate ? ' paid ' + longD(x.interestThisFYDate)
+            : ' (nothing paid yet this year)') + '</div></div>' +
+        '<div class="exit-box"><div class="lbl">Tax each full year</div><div class="v">' + money(t(x.yearlyInterest)) + '</div>' +
+          '<div class="t">on ' + money(x.yearlyInterest) + ' a year</div></div>' +
+        '<div class="exit-box"><div class="lbl">Next payout</div><div class="v">' + longD(x.nextInterest) + '</div>' +
+          '<div class="t">plan the tax on it before then</div></div>' +
+        '<div class="exit-box"><div class="lbl">Tax still to come</div><div class="v">' + money(t(left)) + '</div>' +
+          '<div class="t">on ' + money(left) + ' of interest to ' + esc(x.matures) + '</div></div>' +
+      '</div></div>';
+  }).join("");
+}
+
 function renderOverview() {
   var idx = monthsIndex(DATA.txns);
   var keys = idx.keys, map = idx.map;
@@ -948,6 +979,8 @@ function renderOverview() {
       '<div class="tile"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
+
+    interestTaxCards() +
 
     '<div class="card"><h2>Income vs expenses</h2><p class="cap">Last ' + last12.length + ' months. Tap a month for detail.</p>' +
       '<div id="c-ie"></div></div>' +
