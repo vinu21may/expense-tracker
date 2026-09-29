@@ -17,7 +17,7 @@
  * the fix was live on GitHub Pages. Changing this string reinstalls the worker,
  * which claims open pages and deletes every older cache in activate.
  */
-var CACHE = "finances-shell-v11";
+var CACHE = "finances-shell-v12";
 var SHELL = ["./", "./index.html", "./manifest.json", "./icon.png"];
 
 self.addEventListener("install", function (e) {

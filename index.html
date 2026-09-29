@@ -1945,6 +1945,7 @@ function renderSalary() {
     if (p.bonus)   extra.push("bonus " + money(p.bonus));
     if (p.arrears) extra.push("arrears " + money(p.arrears));
     if (p.oneOff)  extra.push("one-off " + money(p.oneOff));
+    if (p.rebuilt) extra.push("no slip on file — rebuilt from Form 16");
     return '<tr><td>' + monthLabel(p.m) + '</td><td>' + esc(styles[p.company].short) + '</td>' +
       '<td class="num">' + money(p.gross) + '</td><td class="num">' + money(p.tax) + '</td>' +
       '<td class="num">' + money(p.pf) + '</td><td class="num">' + money(p.ded) + '</td>' +
