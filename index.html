@@ -300,11 +300,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
+      <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
-      <button role="tab" data-tab="assets"    aria-selected="false">Accounts &amp; Assets</button>
+      <button role="tab" data-tab="accounts"  aria-selected="false">Accounts</button>
+      <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
-      <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
     </nav>
   </header>
@@ -312,6 +313,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-overview"></section>
     <section id="tab-spending" class="hide"></section>
     <section id="tab-txns"     class="hide"></section>
+    <section id="tab-accounts" class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
@@ -1407,21 +1409,30 @@ function renderAssets() {
     '</tr>';
   }).join("") : "";
 
-  el("tab-assets").innerHTML =
+  /* Accounts: money in the bank and what is owed on the cards (card EMI loans
+     are card debt, so they sit here too). Assets: what has been put away --
+     FDs, investments, goals. Both tabs are drawn from the one set of figures
+     above, so they can never disagree. */
+  var cardsDue = cards.filter(function (a) { return a.due !== null && a.due !== undefined; });
+  var dueTotal = cardsDue.reduce(function (s, a) { return s + a.due; }, 0);
+
+  el("tab-accounts").innerHTML =
     '<div class="card"><div class="total">' +
-      '<div class="headline"><div class="lbl">Total invested</div>' +
-        '<div class="val">' + money(totalInvested) + '</div></div>' +
+      '<div class="headline"><div class="lbl">Cash in bank accounts</div>' +
+        '<div class="val">' + money(savingsTotal) + '</div></div>' +
       '<div class="parts">' +
-        '<div class="part"><div class="p-lbl">Fixed deposits</div>' +
-          '<div class="p-val">' + money(fdTotal) + '</div></div>' +
-        '<div class="part"><div class="p-lbl">Investments</div>' +
-          '<div class="p-val">' + money(invValue) + '</div></div>' +
-        '<div class="part"><div class="p-lbl">In savings accounts</div>' +
-          '<div class="p-val' + (savingsTotal ? '' : ' muted-val') + '">' + money(savingsTotal) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">Credit cards to pay</div>' +
+          '<div class="p-val">' + money(dueTotal) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">Card EMI loans left</div>' +
+          '<div class="p-val">' + money(emiP + emiI) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">Cash after card bills</div>' +
+          '<div class="p-val">' + money(savingsTotal - dueTotal) + '</div></div>' +
       '</div>' +
     '</div>' +
-    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal, investments at their last stated value, ' +
-      'and savings at the balance you last recorded, adjusted for anything the ledger has seen since.' +
+    '<p class="cap" style="margin:14px 0 0">Bank balances as you last recorded them, adjusted for anything the ' +
+      'ledger has seen since; card amounts from the latest statements' +
+      (cards.length > cardsDue.length ? ' (' + (cards.length - cardsDue.length) + ' card' +
+        (cards.length - cardsDue.length > 1 ? 's have' : ' has') + ' no statement amount yet)' : '') + '.' +
       (savingsMissing.length
         ? ' <b>' + savingsMissing.map(function (a) { return esc(a.name); }).join(" and ") +
           (savingsMissing.length > 1 ? ' have ' : ' has ') +
@@ -1429,25 +1440,6 @@ function renderAssets() {
           ' not in this total.</b>'
         : '') +
       '</p>' +
-    '</div>' +
-
-    '<div class="grid k5" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
-        '<div class="sub">' + DATA.fds.length + ' deposits · ' + money(fdInt) + ' interest due</div></div>' +
-      '<div class="tile"><div class="lbl">Investments value</div><div class="val">' + money(invValue) + '</div>' +
-        '<div class="sub">' + (invs.length
-          ? '<span class="' + (invGain >= 0 ? "up" : "down") + '">' + (invGain >= 0 ? "+" : "") + money(invGain) + '</span> on ' + money(invCost)
-          : 'none tracked') + '</div></div>' +
-      '<div class="tile"><div class="lbl">Loan outstanding</div><div class="val">' + money(emiP + emiI) + '</div>' +
-        '<div class="sub">' + activeEmis.length + ' active EMI loans</div></div>' +
-      '<div class="tile"><div class="lbl">Goals progress</div><div class="val">' +
-        (DATA.goals.length
-          ? (DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0) /
-             DATA.goals.reduce(function (s, g) { return s + g.target; }, 0) * 100).toFixed(0) + "%"
-          : "—") + '</div>' +
-        '<div class="sub">' + DATA.goals.length + ' goals tracked</div></div>' +
-      '<div class="tile"><div class="lbl">Card transactions</div><div class="val">' + DATA.cc.length + '</div>' +
-        '<div class="sub">on file</div></div>' +
     '</div>' +
 
     '<div class="card"><h2>Bank accounts</h2>' +
@@ -1462,16 +1454,55 @@ function renderAssets() {
 
     '<div class="card"><h2>Credit cards</h2>' +
       '<p class="cap">Amount due comes from your card statement. Each card purchase is also in ' +
-      'the ledger: on Transactions, pick the card in the Account filter to see them.</p>' +
+      'the ledger: on Transactions, pick the card in the Account filter to see them. ' +
+      DATA.cc.length + ' card transactions on file.</p>' +
       '<div class="tbl-scroll"><table><thead><tr><th>Card</th>' +
       '<th class="num">Amount due</th><th class="num">Minimum due</th>' +
       '<th class="num">Statement</th><th class="num">Due date</th>' +
       '<th class="num">EMI outstanding</th></tr></thead>' +
       '<tbody>' + cardHtml + '</tbody></table></div></div>' +
 
-    /* Stacked, not side by side: the FD table has five columns and was being
-       squeezed into half the width on the iPad, scrolling inside its own box. */
-    '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>' +
+    '<div class="card"><h2>Credit card EMI loans</h2>' +
+      '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
+      (emiHtml
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
+        : '<div class="empty">No active EMI loans.</div>') +
+    '</div>';
+
+  el("tab-assets").innerHTML =
+    '<div class="card"><div class="total">' +
+      '<div class="headline"><div class="lbl">Total invested</div>' +
+        '<div class="val">' + money(totalInvested) + '</div></div>' +
+      '<div class="parts">' +
+        '<div class="part"><div class="p-lbl">Fixed deposits</div>' +
+          '<div class="p-val">' + money(fdTotal) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">Investments</div>' +
+          '<div class="p-val">' + money(invValue) + '</div></div>' +
+        '<div class="part"><div class="p-lbl">In savings accounts</div>' +
+          '<div class="p-val' + (savingsTotal ? '' : ' muted-val') + '">' + money(savingsTotal) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal, investments at their last stated value, ' +
+      'and savings at the bank balances shown on the Accounts tab.</p>' +
+    '</div>' +
+
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
+        '<div class="sub">' + DATA.fds.length + ' deposits · ' + money(fdInt) + ' interest due</div></div>' +
+      '<div class="tile"><div class="lbl">Investments value</div><div class="val">' + money(invValue) + '</div>' +
+        '<div class="sub">' + (invs.length
+          ? '<span class="' + (invGain >= 0 ? "up" : "down") + '">' + (invGain >= 0 ? "+" : "") + money(invGain) + '</span> on ' + money(invCost)
+          : 'none tracked') + '</div></div>' +
+      '<div class="tile"><div class="lbl">Invested in holdings</div><div class="val">' + money(invCost) + '</div>' +
+        '<div class="sub">' + invs.length + ' holdings</div></div>' +
+      '<div class="tile"><div class="lbl">Goals progress</div><div class="val">' +
+        (DATA.goals.length
+          ? (DATA.goals.reduce(function (s, g) { return s + g.saved; }, 0) /
+             DATA.goals.reduce(function (s, g) { return s + g.target; }, 0) * 100).toFixed(0) + "%"
+          : "—") + '</div>' +
+        '<div class="sub">' + DATA.goals.length + ' goals tracked</div></div>' +
+    '</div>' +
+
     '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdTotal) + ' invested.</p>' +
       (fdHtml
         ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
@@ -1488,12 +1519,7 @@ function renderAssets() {
         : '<div class="empty">No investments tracked.</div>') +
     '</div>' +
 
-    '<div class="card"><h2>Credit card EMI loans</h2>' +
-      '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
-      (emiHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
-        : '<div class="empty">No active EMI loans.</div>') +
-    '</div>';
+    '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>';
 }
 
 function renderInsurance() {
@@ -1961,13 +1987,13 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "spending", "txns", "assets", "insurance", "salary", "amma"].forEach(function (t) {
+  ["overview", "salary", "spending", "txns", "accounts", "assets", "insurance", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
   if (name === "spending") renderSpending();
   if (name === "txns")     renderTxns();
-  if (name === "assets")   renderAssets();
+  if (name === "accounts" || name === "assets") renderAssets();
   if (name === "insurance") renderInsurance();
   if (name === "salary")    renderSalary();
   if (name === "amma")      renderAmma();
