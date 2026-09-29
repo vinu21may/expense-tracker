@@ -1029,7 +1029,7 @@ function yearTaxCard() {
   }
   var salYear = salSoFar + (lastSlip ? left * lastSlip.tax : 0);
 
-  // interest paid out by holdings (54EC-type): the payout(s) made this year
+  // interest paid out by holdings along the way: the payout(s) made this year
   var paidOut = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; });
   var poTax = paidOut.reduce(function (t, x) { return t + (x.interestThisFY || 0) * mult; }, 0);
 
