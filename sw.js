@@ -17,7 +17,9 @@
  * the fix was live on GitHub Pages. Changing this string reinstalls the worker,
  * which claims open pages and deletes every older cache in activate.
  */
-var CACHE = "finances-shell-v20";
+var CACHE = "finances-shell-v21";
+// index.html carries the same string as APP_BUILD -- bump BOTH together. The
+// Refresh button compares them and reloads the page when this file is newer.
 var SHELL = ["./", "./index.html", "./manifest.json", "./icon.png"];
 
 self.addEventListener("install", function (e) {
@@ -43,7 +45,10 @@ self.addEventListener("fetch", function (e) {
 
   // Network first so a redeployed app is picked up, cache as the fallback.
   e.respondWith(
-    fetch(e.request).then(function (res) {
+    // cache: "no-cache" -- GitHub Pages sends max-age=600, and without this the
+    // "network" fetch was answered from the browser's HTTP cache, so a redeploy
+    // could stay invisible for ten minutes (seen 30 Sep 2026).
+    fetch(e.request, { cache: "no-cache" }).then(function (res) {
       if (res && res.ok) {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(e.request, copy); });

@@ -347,6 +347,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
+/* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
+var APP_BUILD = "finances-shell-v21";
+
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -2720,12 +2723,33 @@ document.querySelectorAll("nav.tabs button").forEach(function (b) {
   b.addEventListener("click", function () { switchTab(b.dataset.tab); });
 });
 
+/* Refresh used to reload only the data, so a new version of the app itself (a
+   renamed or added tab) never arrived on a device that stayed open. It now asks
+   the server which build is current first, and if that is not the one running,
+   drops the saved app copy and reloads the page before anything else. */
+function newerAppAvailable() {
+  return fetch("sw.js", { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; })
+    .then(function (t) {
+      var m = t.match(/var CACHE = "([^"]+)"/);
+      return !!(m && m[1] !== APP_BUILD);
+    }).catch(function () { return false; });
+}
+
+function reloadApp() {
+  var steps = [];
+  if (window.caches) steps.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+  if (navigator.serviceWorker) steps.push(navigator.serviceWorker.getRegistration().then(function (r) { return r && r.update(); }));
+  Promise.all(steps).catch(function () {}).then(function () { location.reload(); });
+}
+
 el("refresh").addEventListener("click", function () {
   var owner = localStorage.getItem(LS.owner), repo = localStorage.getItem(LS.repo), token = localStorage.getItem(LS.token);
-  if (!owner) { location.reload(); return; }
   var btn = this; btn.textContent = "Refreshing…";
-  fetchGitHub(owner, repo, token).then(function (d) {
-    cacheSave(d); boot(d, false); btn.textContent = "Refresh";
+  newerAppAvailable().then(function (newer) {
+    if (newer || !owner) { reloadApp(); return; }
+    return fetchGitHub(owner, repo, token).then(function (d) {
+      cacheSave(d); boot(d, false); btn.textContent = "Refresh";
+    });
   }).catch(function (e) {
     btn.textContent = "Refresh"; alert(e.message);
   });
@@ -2786,7 +2810,18 @@ el("g-token").addEventListener("keydown", function (e) { if (e.key === "Enter") 
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () { /* offline support is optional */ });
+    // updateViaCache "none": always fetch sw.js itself fresh when checking for a new version
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(function () { /* offline support is optional */ });
+    // opening the app also checks, so a new version needs no Refresh tap at all
+    // at most once a minute: if the two build strings were ever left out of step,
+    // this would otherwise reload for ever
+    newerAppAvailable().then(function (newer) {
+      var last = 0;
+      try { last = +sessionStorage.getItem("ft.appReload") || 0; } catch (e) {}
+      if (!newer || Date.now() - last < 60000) return;
+      try { sessionStorage.setItem("ft.appReload", String(Date.now())); } catch (e) {}
+      reloadApp();
+    });
   });
 }
 </script>
