@@ -191,6 +191,18 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .tile .lbl { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .tile .val { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -0.025em; margin-top: 6px; line-height: 1.1; }
 .tile .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 5px; }
+/* a tile that filters the list below it (Insurance, Upcoming Bills) */
+.tile.click { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+              transition: border-color .15s, box-shadow .15s; }
+.tile.click:hover { border-color: color-mix(in srgb, var(--series-1) 45%, var(--border)); }
+.tile.click:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.tile.click.on { border-color: var(--series-1); box-shadow: 0 0 0 1px var(--series-1), var(--shadow); }
+.tile.click .lbl::after { content: " ›"; color: var(--series-1); }
+.filterbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 16px;
+             font-size: 13.5px; color: var(--text-secondary); }
+.filterbar button { font: inherit; font-weight: 600; color: var(--series-1); background: none; border: 0;
+                    padding: 4px 0; cursor: pointer; }
+.card.flash { box-shadow: 0 0 0 2px var(--series-1), var(--shadow); transition: box-shadow .4s; }
 .up { color: var(--good-text); } .down { color: var(--critical); }
 
 /* Account numbers: 14 digits that get read off and compared against a bank
@@ -348,7 +360,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v21";
+var APP_BUILD = "finances-shell-v22";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -895,7 +907,45 @@ function chartNet(container, keys, map, fit) {
    ===================================================================== */
 
 var STATE = { tab: "overview", month: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
-              tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200 };
+              tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
+              insFilter: "", billFilter: "" };
+
+/* A summary tile that can be tapped. `key` is what it filters to; the tile
+   the list is currently filtered by is drawn as selected. Tapping it again
+   goes back to everything (see wireTiles). */
+function tile(key, current, label, value, sub, title) {
+  return '<div class="tile click' + (key && key === current ? ' on' : '') + '" role="button" tabindex="0"' +
+    ' data-f="' + esc(key) + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+    '<div class="lbl">' + label + '</div><div class="val">' + value + '</div>' +
+    '<div class="sub">' + sub + '</div></div>';
+}
+
+/* Tap or Enter/Space on a tile calls onPick with its key, or with "" when the
+   tile is already the active filter. */
+function wireTiles(root, current, onPick) {
+  root.querySelectorAll(".tile.click").forEach(function (t) {
+    function go() { var k = t.getAttribute("data-f"); onPick(k === current ? "" : k); }
+    t.addEventListener("click", go);
+    t.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+    });
+  });
+}
+
+/* Bring a card into view and outline it briefly, for tiles that point at a
+   card rather than filter a list. */
+function flashCard(id) {
+  var c = el(id);
+  if (!c) return;
+  c.scrollIntoView({ behavior: "smooth", block: "start" });
+  c.classList.add("flash");
+  setTimeout(function () { c.classList.remove("flash"); }, 1600);
+}
+
+function filterBar(text, clearId) {
+  return '<div class="filterbar"><span>' + text + '</span>' +
+    '<button type="button" id="' + clearId + '">Show all</button></div>';
+}
 
 function monthOptions(keys, sel, includeAll, allLabel) {
   var o = includeAll ? '<option value="">' + (allLabel || "All time") + '</option>' : "";
@@ -1856,6 +1906,12 @@ function renderInsurance() {
     return a.next.days - b.next.days;
   });
   var polSoon = pols.filter(function (p) { return p.next && p.next.days <= 45; }).length;
+  var allCount = pols.length;
+
+  // tile filters: "soon" = premium within 45 days, "premium" = largest premium first
+  var F = STATE.insFilter;
+  if (F === "soon") pols = pols.filter(function (p) { return p.next && p.next.days <= 45; });
+  if (F === "premium") pols = pols.slice().sort(function (a, b) { return b.premium - a.premium; });
   function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
 
   /* Health, Life and Vehicle each get their own box.
@@ -1928,13 +1984,14 @@ function renderInsurance() {
 
   el("tab-insurance").innerHTML =
     '<div class="grid k5" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">Policies in force</div><div class="val">' + pols.length + '</div>' +
-        '<div class="sub">' + (expired ? expired + ' expired' : 'none expired') + '</div></div>' +
-      '<div class="tile"><div class="lbl">Premium a year</div><div class="val">' + money(polPrem) + '</div>' +
-        '<div class="sub">across all policies</div></div>' +
-      '<div class="tile"><div class="lbl">Premiums due soon</div><div class="val">' + polSoon + '</div>' +
-        '<div class="sub">within 45 days</div></div>' +
+      tile("all", F || "all", "Policies in force", allCount,
+           expired ? expired + ' expired' : 'none expired', "Show every policy") +
+      tile("premium", F, "Premium a year", money(polPrem),
+           F === "premium" ? 'largest premium first' : 'across all policies', "Sort by premium, largest first") +
+      tile("soon", F, "Premiums due soon", polSoon, 'within 45 days', "Show only premiums due within 45 days") +
     '</div>' +
+    (F === "soon" ? filterBar('Showing only premiums due within 45 days.', "ins-clear")
+     : F === "premium" ? filterBar('Largest premium first, within each group.', "ins-clear") : '') +
 
     '<p class="cap" style="margin:0 0 16px">What is covered and when it lapses. This is cover, not money you ' +
       'hold, so it counts towards no asset total — and the premiums are already in your spending, so nothing ' +
@@ -1957,7 +2014,16 @@ function renderInsurance() {
           '</div>';
         }).join("")
       : '<div class="card"><h2>Insurance cover</h2>' +
-        '<div class="empty">No policies tracked.</div></div>');
+        '<div class="empty">' + (F === "soon" ? 'No premium falls due within 45 days.' : 'No policies tracked.') +
+        '</div></div>');
+
+  var root = el("tab-insurance");
+  wireTiles(root, F || "all", function (k) {
+    STATE.insFilter = k === "all" ? "" : k;
+    renderInsurance();
+  });
+  var clr = el("ins-clear");
+  if (clr) clr.addEventListener("click", function () { STATE.insFilter = ""; renderInsurance(); });
 }
 
 /* =====================================================================
@@ -2076,12 +2142,20 @@ function renderBills() {
     return "";
   }
 
+  // tile filters narrow the timeline only; the tiles keep their whole-window figures
+  var F = STATE.billFilter;
+  var shown = occ.filter(function (o) {
+    if (F === "30") return o.days <= 30;
+    if (F === "amma") return /amma/i.test(o.b.group);
+    return true;
+  });
+
   // the timeline, a header row per month
   var rows = "", lastMonth = "";
-  occ.forEach(function (o) {
+  shown.forEach(function (o) {
     var mk = monthKey(o.date);
     if (mk !== lastMonth) {
-      var monthSum = sum(occ.filter(function (x) { return monthKey(x.date) === mk; }));
+      var monthSum = sum(shown.filter(function (x) { return monthKey(x.date) === mk; }));
       rows += '<tr><td colspan="4" style="padding-top:18px"><b>' + monthLabel(mk) + '</b></td>' +
               '<td class="num"><b>' + money(monthSum) + '</b></td></tr>';
       lastMonth = mk;
@@ -2143,24 +2217,22 @@ function renderBills() {
 
   el("tab-bills").innerHTML =
     '<div class="grid k5" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">Due in ' + BILL_DAYS + ' days</div><div class="val">' + (anyApprox ? "≈ " : "") + money(total) + '</div>' +
-        '<div class="sub">' + occ.filter(function (o) { return o.counted; }).length + ' payments to ' + longDate(end) + '</div></div>' +
-      '<div class="tile"><div class="lbl">Next 30 days</div><div class="val">' + money(in30) + '</div>' +
-        '<div class="sub">of that total</div></div>' +
-      '<div class="tile"><div class="lbl">Amma repays</div><div class="val">' + money(repaid) + '</div>' +
-        '<div class="sub">paid by you, owed back</div></div>' +
-      '<div class="tile"><div class="lbl">Coming in</div><div class="val">' + money(fdTotal) + '</div>' +
-        '<div class="sub">' + (fdsIn.length
-          ? fdsIn.map(function (f) { return esc(f.id) + ' matures ' + dayLabel(f.maturity); }).join(", ")
-          : 'no FD matures') + '</div></div>' +
-      '<div class="tile"><div class="lbl">To decide</div><div class="val">' + decide.length + '</div>' +
-        '<div class="sub">trials and ones to check</div></div>' +
+      tile("all", F || "all", "Due in " + BILL_DAYS + " days", (anyApprox ? "≈ " : "") + money(total),
+           occ.filter(function (o) { return o.counted; }).length + ' payments to ' + longDate(end), "Show everything due") +
+      tile("30", F, "Next 30 days", money(in30), 'of that total', "Show only the next 30 days") +
+      tile("amma", F, "Amma repays", money(repaid), 'paid by you, owed back', "Show only what Amma repays") +
+      tile("in", F, "Coming in", money(fdTotal),
+           fdsIn.length ? fdsIn.map(function (f) { return esc(f.id) + ' matures ' + dayLabel(f.maturity); }).join(", ")
+                        : 'no FD matures', "Open the fixed deposits on the Assets tab") +
+      tile("decide", F, "To decide", decide.length, 'trials and ones to check', "Jump to the trials and items to check") +
     '</div>' +
+    (F === "30" ? filterBar('Showing only the next 30 days, to ' + longDate(isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30))) + '.', "bills-clear")
+     : F === "amma" ? filterBar('Showing only what Amma repays.', "bills-clear") : '') +
 
-    '<div class="card"><h2>Next ' + BILL_DAYS + ' days</h2>' +
+    '<div class="card" id="bills-timeline"><h2>' + (F === "30" ? 'Next 30 days' : F === "amma" ? 'Amma repays' : 'Next ' + BILL_DAYS + ' days') + '</h2>' +
       '<p class="cap">Every bill, subscription, card bill and premium due by ' + longDate(end) + '. ' +
         '≈ marks an estimate. Amounts in grey are left out of the totals: not known yet, or not certain to be charged.</p>' +
-      (occ.length
+      (shown.length
         ? '<div class="tbl-scroll"><table><thead><tr><th>Date</th><th>Bill</th><th>Group</th><th>Paid via</th>' +
           '<th class="num">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<div class="empty">Nothing due.</div>') +
@@ -2170,7 +2242,7 @@ function renderBills() {
       '<div class="card"><h2>By group</h2><p class="cap">Next ' + BILL_DAYS + ' days.</p>' +
         '<div class="tbl-scroll"><table><thead><tr><th>Group</th><th class="num">Payments</th><th class="num">Total</th></tr></thead>' +
         '<tbody>' + groupRows + '</tbody></table></div></div>' +
-      '<div class="card"><h2>To decide</h2><p class="cap">Free trials about to charge, and things that may or may not still be live.</p>' +
+      '<div class="card" id="bills-decide"><h2>To decide</h2><p class="cap">Free trials about to charge, and things that may or may not still be live.</p>' +
         (decide.length
           ? '<div class="tbl-scroll"><table><tbody>' + decide.map(function (b) {
               var nx = billDates(b.due, b.every, today, far)[0];
@@ -2204,6 +2276,16 @@ function renderBills() {
           }).join("") + '</tbody></table></div>'
         : '<div class="empty">Nothing further recorded.</div>') +
     '</div>';
+
+  wireTiles(el("tab-bills"), F || "all", function (k) {
+    // two tiles point elsewhere rather than filter
+    if (k === "in")     { switchTab("assets"); return; }
+    if (k === "decide") { flashCard("bills-decide"); return; }
+    STATE.billFilter = k === "all" ? "" : k;
+    renderBills();
+  });
+  var clr = el("bills-clear");
+  if (clr) clr.addEventListener("click", function () { STATE.billFilter = ""; renderBills(); });
 }
 
 /* =====================================================================
