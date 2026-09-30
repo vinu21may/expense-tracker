@@ -319,6 +319,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
+      <button role="tab" data-tab="bills"     aria-selected="false">Bills</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
     </nav>
@@ -329,6 +330,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-accounts" class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
+    <section id="tab-bills"     class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
@@ -1956,6 +1958,252 @@ function renderInsurance() {
 }
 
 /* =====================================================================
+   Bills -- what falls due in the next 60 days.
+
+   From the Upcoming Bills sheet (one row per bill: its next due date and
+   rhythm), plus insurance premiums from the Insurance Policies sheet, so a
+   renewal date is kept in one place, and FD maturities as money coming in.
+   Repeats are rolled forward here, so a row stays useful after its date
+   passes. Only an "Exact" amount is trusted on every repeat; "This time" is
+   exact for the next date only, and everything else is shown as ≈.
+
+   Not counted in any total: amounts nobody knows yet (a planned trip) and
+   anything marked Check, which may not be live at all (listed once only).
+   ===================================================================== */
+
+var BILL_DAYS = 60;
+
+function isoDate(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+         String(d.getDate()).padStart(2, "0");
+}
+
+/* The bill's own day n months on, pulled back to the month's last day when
+   that month is shorter (a bill on the 31st lands on 30 Nov, then 31 Dec). */
+function addMonths(d, n, day) {
+  var y = d.getFullYear(), m = d.getMonth() + n;
+  return new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()));
+}
+
+function billStep(every) {
+  var e = (every || "").toLowerCase();
+  if (/week/.test(e))              return function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7); };
+  if (/2 months|bi-?monthly/.test(e)) return function (d, day) { return addMonths(d, 2, day); };
+  if (/quarter/.test(e))           return function (d, day) { return addMonths(d, 3, day); };
+  if (/half/.test(e))              return function (d, day) { return addMonths(d, 6, day); };
+  if (/month/.test(e))             return function (d, day) { return addMonths(d, 1, day); };
+  if (/year|annual/.test(e))       return function (d, day) { return addMonths(d, 12, day); };
+  return null;                     // Once, As used
+}
+
+/* Every date a bill falls due from `from` to `to` (ISO), with how many steps
+   it was rolled forward from the sheet's date. A past one-off is gone. */
+function billDates(start, every, from, to) {
+  if (!start) return [];
+  var step = billStep(every), d = new Date(start + "T00:00:00"), day = d.getDate();
+  var f = new Date(from + "T00:00:00"), t = new Date(to + "T00:00:00"), out = [], n = 0;
+  if (!step) return d >= f && d <= t ? [{ date: start, rolled: 0 }] : [];
+  while (d < f && n < 2000) { d = step(d, day); n++; }
+  for (var k = n; d <= t && k < n + 400; k++) { out.push({ date: isoDate(d), rolled: k }); d = step(d, day); }
+  return out;
+}
+
+function renderBills() {
+  var now = new Date(), today = isoDate(now);
+  var end = isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + BILL_DAYS));
+  var far = isoDate(new Date(now.getFullYear() + 3, now.getMonth(), now.getDate()));
+  function daysTo(iso) { return Math.round((new Date(iso + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000); }
+  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
+
+  var bills = (DATA.bills || []).slice();
+
+  // insurance premiums, taken from the policies rather than listed twice --
+  // only those paid from one of these accounts, so cover taken out of salary or
+  // paid by someone else does not show up as a bill
+  var ownAccounts = (DATA.accounts || []).map(function (a) { return a.name; });
+  (DATA.insurance || []).forEach(function (p) {
+    var n = nextPremium(p, today);
+    if (!n || ownAccounts.indexOf(p.paidFrom) < 0) return;
+    bills.push({
+      name: p.name, group: "Insurance", amount: n.amount, amountIs: "Exact",
+      every: n.every || "Yearly", due: n.date, via: p.paidFrom || "", mandate: "",
+      status: "Active", evidence: "Insurance Policies sheet", notes: p.insurer || ""
+    });
+  });
+
+  var occ = [];
+  bills.forEach(function (b) {
+    billDates(b.due, b.every, today, end).forEach(function (o, i) {
+      // something that may not be live at all is listed once, not every week
+      if (b.status === "Check" && i > 0) return;
+      var approx = b.amount == null ? true
+        : b.amountIs === "Exact" ? false
+        : b.amountIs === "This time" ? o.rolled > 0 : true;
+      occ.push({ b: b, date: o.date, days: daysTo(o.date), amount: b.amount, approx: approx,
+                 first: i === 0, counted: b.amount != null && b.status !== "Check" });
+    });
+  });
+  occ.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.b.name.localeCompare(b.b.name); });
+
+  function sum(list) { return list.reduce(function (s, o) { return s + (o.counted ? o.amount : 0); }, 0); }
+  var total = sum(occ);
+  var in30 = sum(occ.filter(function (o) { return o.days <= 30; }));
+  var repaid = sum(occ.filter(function (o) { return /amma/i.test(o.b.group); }));
+  var anyApprox = occ.some(function (o) { return o.counted && o.approx; });
+
+  var fdsIn = (DATA.fds || []).filter(function (f) { return f.maturity && f.maturity >= today && f.maturity <= end; });
+  var fdTotal = fdsIn.reduce(function (s, f) { return s + (f.matAmt || 0); }, 0);
+
+  // Trial: will charge unless cancelled. Check: may not be live, so kept out of
+  // the totals. Question: live and counted, but worth a second look.
+  var decide = bills.filter(function (b) { return /^(Trial|Check|Question)$/.test(b.status); });
+
+  function amountCell(o) {
+    if (o.amount == null) return '<span class="muted">not known</span>';
+    var a = (o.approx ? "≈ " : "") + money(o.amount);
+    return o.counted ? a : '<span class="muted">' + a + '</span>';
+  }
+  function statusPill(b, days, first) {
+    if (first !== false) {
+      if (b.status === "Trial") return ' <span class="pill warn">trial ends</span>';
+      if (b.status === "Check") return ' <span class="pill">check · not in total</span>';
+      if (b.status === "Question") return ' <span class="pill warn">check</span>';
+    }
+    if (days != null && days <= 7) return ' <span class="pill warn">' + (days === 0 ? "today" : days + (days === 1 ? " day" : " days")) + '</span>';
+    return "";
+  }
+
+  // the timeline, a header row per month
+  var rows = "", lastMonth = "";
+  occ.forEach(function (o) {
+    var mk = monthKey(o.date);
+    if (mk !== lastMonth) {
+      var monthSum = sum(occ.filter(function (x) { return monthKey(x.date) === mk; }));
+      rows += '<tr><td colspan="4" style="padding-top:18px"><b>' + monthLabel(mk) + '</b></td>' +
+              '<td class="num"><b>' + money(monthSum) + '</b></td></tr>';
+      lastMonth = mk;
+    }
+    rows += '<tr>' +
+      '<td style="white-space:nowrap">' + dayLabel(o.date) + '</td>' +
+      '<td class="desc">' + esc(o.b.name) + statusPill(o.b, o.days, o.first) +
+        (o.first && o.b.notes && (o.b.status !== "Active" || o.b.amountIs !== "Exact")
+          ? '<div class="muted" style="font-size:12.5px;margin-top:3px">' + esc(o.b.notes) + '</div>' : '') + '</td>' +
+      '<td><span class="muted">' + esc(o.b.group) + '</span></td>' +
+      '<td><span class="muted">' + esc(o.b.via) + '</span></td>' +
+      '<td class="num">' + amountCell(o) + '</td>' +
+    '</tr>';
+  });
+
+  // subtotal by group, biggest first
+  var groups = [];
+  occ.forEach(function (o) { if (groups.indexOf(o.b.group) < 0) groups.push(o.b.group); });
+  groups.sort(function (a, b) {
+    return sum(occ.filter(function (o) { return o.b.group === b; })) -
+           sum(occ.filter(function (o) { return o.b.group === a; }));
+  });
+  var groupRows = groups.map(function (g) {
+    var mine = occ.filter(function (o) { return o.b.group === g; });
+    var known = mine.some(function (o) { return o.counted; });
+    return '<tr><td>' + esc(g) + '</td><td class="num">' + mine.length + '</td>' +
+           '<td class="num">' + (known ? money(sum(mine)) : '<span class="muted">not known</span>') + '</td></tr>';
+  }).join("");
+
+  // standing permissions to debit the bank, i.e. not the App Store balance
+  var mandates = bills.filter(function (b) { return b.mandate && !/app store/i.test(b.mandate); });
+  var kinds = [];
+  mandates.forEach(function (b) { if (kinds.indexOf(b.mandate) < 0) kinds.push(b.mandate); });
+  var appStore = bills.filter(function (b) { return /app store/i.test(b.mandate || ""); }).length;
+  var mandateHtml = kinds.map(function (k) {
+    var mine = mandates.filter(function (b) { return b.mandate === k; });
+    return '<tr><td colspan="3" style="padding-top:16px"><b>' + esc(k) + '</b> <span class="muted">· ' +
+             mine.length + '</span></td></tr>' +
+      mine.map(function (b) {
+        var nx = billDates(b.due, b.every, today, far)[0];
+        return '<tr><td class="desc">' + esc(b.name) + statusPill(b, null) +
+          '<div class="muted" style="font-size:12.5px;margin-top:3px">' + esc(b.evidence) +
+          (b.status === "Check" && b.notes ? ' — ' + esc(b.notes) : '') + '</div></td>' +
+          '<td><span class="muted">' + (nx ? longDate(nx.date) : esc(b.every)) + '</span></td>' +
+          '<td class="num">' + (b.amount == null ? '<span class="muted">varies</span>' : money(b.amount)) + '</td></tr>';
+      }).join("");
+  }).join("");
+
+  // what comes after the window: only bills the timeline above does not already
+  // show, so the yearly renewals are not buried under next month's repeats
+  var later = [];
+  bills.forEach(function (b) {
+    if (b.status === "Check" || occ.some(function (o) { return o.b === b; })) return;
+    var nx = billDates(b.due, b.every, isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + BILL_DAYS + 1)), far)[0];
+    if (nx && b.amount != null) later.push({ b: b, date: nx.date });
+  });
+  later.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  later = later.slice(0, 12);
+
+  el("tab-bills").innerHTML =
+    '<div class="grid k5" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">Due in ' + BILL_DAYS + ' days</div><div class="val">' + (anyApprox ? "≈ " : "") + money(total) + '</div>' +
+        '<div class="sub">' + occ.filter(function (o) { return o.counted; }).length + ' payments to ' + longDate(end) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Next 30 days</div><div class="val">' + money(in30) + '</div>' +
+        '<div class="sub">of that total</div></div>' +
+      '<div class="tile"><div class="lbl">Amma repays</div><div class="val">' + money(repaid) + '</div>' +
+        '<div class="sub">paid by you, owed back</div></div>' +
+      '<div class="tile"><div class="lbl">Coming in</div><div class="val">' + money(fdTotal) + '</div>' +
+        '<div class="sub">' + (fdsIn.length
+          ? fdsIn.map(function (f) { return esc(f.id) + ' matures ' + dayLabel(f.maturity); }).join(", ")
+          : 'no FD matures') + '</div></div>' +
+      '<div class="tile"><div class="lbl">To decide</div><div class="val">' + decide.length + '</div>' +
+        '<div class="sub">trials and ones to check</div></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>Next ' + BILL_DAYS + ' days</h2>' +
+      '<p class="cap">Every bill, subscription, card bill and premium due by ' + longDate(end) + '. ' +
+        '≈ marks an estimate. Amounts in grey are left out of the totals: not known yet, or not certain to be charged.</p>' +
+      (occ.length
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Date</th><th>Bill</th><th>Group</th><th>Paid via</th>' +
+          '<th class="num">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        : '<div class="empty">Nothing due.</div>') +
+    '</div>' +
+
+    '<div class="grid k2" style="margin-top:16px">' +
+      '<div class="card"><h2>By group</h2><p class="cap">Next ' + BILL_DAYS + ' days.</p>' +
+        '<div class="tbl-scroll"><table><thead><tr><th>Group</th><th class="num">Payments</th><th class="num">Total</th></tr></thead>' +
+        '<tbody>' + groupRows + '</tbody></table></div></div>' +
+      '<div class="card"><h2>To decide</h2><p class="cap">Free trials about to charge, and things that may or may not still be live.</p>' +
+        (decide.length
+          ? '<div class="tbl-scroll"><table><tbody>' + decide.map(function (b) {
+              var nx = billDates(b.due, b.every, today, far)[0];
+              return '<tr><td class="desc"><b>' + esc(b.name) + '</b>' + statusPill(b, null) +
+                '<div class="muted" style="font-size:12.5px;margin-top:3px">' + esc(b.notes) + '</div></td>' +
+                '<td class="num">' + (b.amount == null ? '' : money(b.amount) + '<div class="muted" style="font-size:12px">' + esc(b.every.toLowerCase()) + '</div>') +
+                (nx ? '<div class="muted" style="font-size:12px">' + dayLabel(nx.date) + '</div>' : '') + '</td></tr>';
+            }).join("") + '</tbody></table></div>'
+          : '<div class="empty">Nothing to decide.</div>') +
+      '</div>' +
+    '</div>' +
+
+    '<div class="card" style="margin-top:16px"><h2>Auto-debit mandates</h2>' +
+      '<p class="cap">Standing permissions to take money from the bank without asking each time: UPI AutoPay, NACH ' +
+        'eMandates and card standing instructions. The full live list is only in the bank: HDFC NetBanking → ' +
+        'e-Mandate for NACH, and your UPI app’s AutoPay section for UPI.' +
+        (appStore ? ' ' + appStore + ' apps are billed to the Apple Account balance instead, which is not a bank mandate.' : '') + '</p>' +
+      (mandates.length
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Mandate</th><th>Next debit</th><th class="num">Amount</th></tr></thead>' +
+          '<tbody>' + mandateHtml + '</tbody></table></div>'
+        : '<div class="empty">None recorded.</div>') +
+    '</div>' +
+
+    '<div class="card" style="margin-top:16px"><h2>Later</h2><p class="cap">Yearly renewals and other payments ' +
+      'not due before ' + longDate(end) + ', soonest first. Monthly bills are not repeated here.</p>' +
+      (later.length
+        ? '<div class="tbl-scroll"><table><tbody>' + later.map(function (x) {
+            return '<tr><td style="white-space:nowrap">' + longDate(x.date) + '</td><td class="desc">' + esc(x.b.name) +
+              '</td><td><span class="muted">' + esc(x.b.group) + '</span></td><td class="num">' +
+              (x.b.amountIs === "Exact" ? "" : "≈ ") + money(x.b.amount) + '</td></tr>';
+          }).join("") + '</tbody></table></div>'
+        : '<div class="empty">Nothing further recorded.</div>') +
+    '</div>';
+}
+
+/* =====================================================================
    Salary -- every payslip found in email, from the Salary History sheet.
 
    Each slip's gross is split (in the workbook) into regular pay + bonus +
@@ -2421,13 +2669,14 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "salary", "spending", "txns", "accounts", "assets", "insurance", "amma"].forEach(function (t) {
+  ["overview", "salary", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
   if (name === "spending") renderSpending();
   if (name === "txns")     renderTxns();
   if (name === "accounts" || name === "assets") renderAssets();
+  if (name === "bills")     renderBills();
   if (name === "insurance") renderInsurance();
   if (name === "salary")    renderSalary();
   if (name === "amma")      renderAmma();
