@@ -209,6 +209,12 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .tile .lbl { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .tile .val { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -0.025em; margin-top: 6px; line-height: 1.1; }
 .tile .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 5px; }
+/* a tile laid out as a small statement: one item per line, amount on the right */
+.tile .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+            color: var(--text-secondary); margin-top: 5px; font-variant-numeric: tabular-nums; }
+.tile .kv b { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.tile .kv.total { border-top: 1px solid var(--grid); padding-top: 6px; margin-top: 7px; color: var(--text-primary); font-weight: 600; }
+.tile .kv.note { color: var(--muted); font-size: 12px; }
 /* a tile that filters the list below it (Insurance, Upcoming Bills) */
 .tile.click { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
               transition: border-color .15s, box-shadow .15s; }
@@ -2892,32 +2898,53 @@ function renderSalary() {
   var salGrossNow = cur.gross - (cur.bonus || 0) - (cur.oneOff || 0);
   var salTaxNow = cur.tax - lastBonusTax;
   var salNetNow = cur.net - ((cur.bonus || 0) - lastBonusTax) - (cur.oneOff || 0);
-  // that month's bonus, or else the latest one before it (on a payslip or paid separately)
-  var lastPay = payouts.filter(function (p) { return p.m <= cur.m; }).pop();
-  var lpTax = lastPay ? (lastPay.extra ? (marg !== null ? Math.round(lastPay.bonus * marg) : null) : bonusTaxOf(lastPay)) : null;
+  // a bonus only for the month it was paid -- on the payslip, or paid separately that month
+  var offSlip = payouts.filter(function (p) { return p.extra && p.m === cur.m && p.company === cur.company; });
+  var bonusAmt = (cur.bonus || 0) + offSlip.reduce(function (t, p) { return t + p.bonus; }, 0);
+  var bonusTax = lastBonusTax + (marg !== null ? offSlip.reduce(function (t, p) { return t + Math.round(p.bonus * marg); }, 0) : 0);
+  var bonusNote = cur.bonus ? (cur.bonusNotes || 'on the payslip') : (offSlip.length ? 'paid separately from the payslip' : '');
+
+  function kv(label, amount, cls) {
+    return '<div class="kv' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span>' +
+      (amount === null ? '' : '<b>' + (amount < 0 ? '− ' + money(-amount) : money(amount)) + '</b>') + '</div>';
+  }
+  function kvText(label, text) {                  // a line whose right side is words, not money
+    return '<div class="kv"><span>' + label + '</span><b>' + text + '</b></div>';
+  }
+  var pf = cur.pf || 0, pt = cur.profTax || 0, otherDed = cur.otherDed || 0;
 
   box.innerHTML =
     monthPick +
     '<div class="grid k4" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">Regular pay' + (cur === last ? ' now' : '') + '</div><div class="val">' + money(cur.regular) + '</div>' +
-        '<div class="sub">a month, gross · ' + esc(styles[cur.company].short) + ', ' + monthLabel(cur.m) +
-          (cur.rebuilt ? ' · rebuilt, no slip on file' : '') + '</div></div>' +
-      '<div class="tile"><div class="lbl">Salary take-home · ' + monthLabel(cur.m) + '</div><div class="val">' + money(salNetNow) + '</div>' +
-        '<div class="sub">gross ' + money(salGrossNow) + ' · tax ' + money(salTaxNow) +
-          (cur.ded - cur.tax ? ' · PF etc. ' + money(cur.ded - cur.tax) : '') +
-          (cur.arrears ? ' · incl. ' + money(cur.arrears) + ' arrears' : '') +
-          (cur.oneOff ? '<br>plus a ' + money(cur.oneOff) + ' one-off, not counted here' : '') + '<br>deposited in the bank</div></div>' +
-      (lastPay
-        ? '<div class="tile"><div class="lbl">' + (lastPay.m === cur.m ? 'Bonus' : 'Latest bonus') + ' · ' +
-            esc(lastPay.label || monthLabel(lastPay.m)) + '</div>' +
-            '<div class="val">' + (lpTax !== null ? money(lastPay.bonus - lpTax) : money(lastPay.bonus)) + '</div>' +
-            '<div class="sub">bonus ' + money(lastPay.bonus) + (lpTax !== null ? ' · tax ' + money(lpTax) : '') +
-              '<br>deposited in the bank</div></div>'
-        : '<div class="tile"><div class="lbl">Latest bonus</div><div class="val">—</div><div class="sub">none on record</div></div>') +
+      '<div class="tile"><div class="lbl">Monthly salary (gross)</div><div class="val">' + money(cur.regular) + '</div>' +
+        kvText('Employer', esc(styles[cur.company].short)) +
+        kvText('Month', monthLabel(cur.m)) +
+        (cur.arrears ? kv('Plus arrears (back pay)', cur.arrears) : '') +
+        (cur.rebuilt ? kv('No payslip on file — rebuilt', null, 'note') : '') +
+      '</div>' +
+      '<div class="tile"><div class="lbl">Take-home salary · ' + monthLabel(cur.m) + '</div><div class="val">' + money(salNetNow) + '</div>' +
+        kv('Gross salary', salGrossNow) +
+        kv('Less income tax', -salTaxNow) +
+        (pf ? kv('Less provident fund (PF)', -pf) : '') +
+        (pt ? kv('Less professional tax', -pt) : '') +
+        (otherDed ? kv('Less other deductions', -otherDed) : '') +
+        kv('Paid into your bank', salNetNow, 'total') +
+        (cur.oneOff ? kv('Not included: ' + money(cur.oneOff) + ' one-off payment', null, 'note') : '') +
+      '</div>' +
+      '<div class="tile"><div class="lbl">Bonus · ' + monthLabel(cur.m) + '</div><div class="val">' + money(bonusAmt - bonusTax) + '</div>' +
+        (bonusAmt
+          ? kv('Bonus', bonusAmt) +
+            kv('Less income tax', -bonusTax) +
+            kv('Paid into your bank', bonusAmt - bonusTax, 'total') +
+            (bonusNote ? kv(esc(bonusNote), null, 'note') : '')
+          : kv('No bonus this month', null, 'note')) +
+      '</div>' +
       '<div class="tile"><div class="lbl">Growth since ' + first.m.slice(0, 4) + '</div><div class="val">' +
         (cur.regular / first.regular).toFixed(1) + '×</div>' +
-        '<div class="sub">regular pay ' + moneyShort(first.regular) + ' → ' + moneyShort(cur.regular) + ' a month' +
-          (cur === last ? '' : ' by ' + monthLabel(cur.m)) + '</div></div>' +
+        kv(monthLabel(first.m) + ' (first payslip)', first.regular) +
+        kv(monthLabel(cur.m), cur.regular) +
+        kv('Monthly salary, gross', null, 'note') +
+      '</div>' +
     '</div>' +
 
 
