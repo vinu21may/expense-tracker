@@ -345,6 +345,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
       <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
+      <button role="tab" data-tab="tax"       aria-selected="false">Tax Planning</button>
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
@@ -363,6 +364,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-bills"     class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
+    <section id="tab-tax"       class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
@@ -1027,6 +1029,36 @@ var FD_TDS_RATE = 10, FD_TDS_LIMIT = 50000;
                 now (taxed as it accrues), less anything those FDs already paid.
    Without the regime rules (an older data.json) it falls back to tax on
    interest at the marginal rate. */
+/* Overview's one-glance tax summary: per source, the year's tax, what has been
+   taken at source, what is still pending, and that spread over the months left.
+   Salary's pending part is deducted by the employer month by month; the rest is
+   the taxpayer's (advance tax). Full workings live on the Tax Planning tab. */
+function taxOverviewCard() {
+  var m = yearTaxCard("model");
+  if (!m || typeof m !== "object") return "";
+  var tTax = 0, tTaken = 0, tPend = 0, mine = 0;
+  var body = m.rows.filter(function (r) { return r.tax > 0.5 || r.taken > 0; }).map(function (r) {
+    var pend = r.tax - r.taken;
+    tTax += r.tax; tTaken += r.taken; tPend += pend;
+    if (r.pendingBy === "you") mine += Math.max(0, pend);
+    return '<tr><td>' + esc(r.label) + '<div class="muted" style="font-size:12px">' + esc(r.note) + '</div></td>' +
+      '<td class="num">' + money(r.tax) + '</td><td class="num">' + money(r.taken) + '</td>' +
+      '<td class="num"><b>' + money(pend) + '</b><div class="muted" style="font-size:12px">' +
+        (r.pendingBy === "you" ? 'you pay' : 'employer deducts') + '</div></td>' +
+      '<td class="num">' + money(Math.max(0, pend) / m.monthsLeft) + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Tax · ' + m.fyName + '</h2>' +
+    '<p class="cap">Estimated under the new regime. <b>' + money(mine) + '</b> of the pending tax is yours to pay ' +
+      '(about ' + money(mine / m.monthsLeft) + ' a month, ' + m.spanLbl + '); the rest your employer deducts from salary. ' +
+      '<button class="linkish" id="ov-taxlink" style="padding:0">Full workings on Tax Planning →</button></p>' +
+    '<div class="tbl-scroll"><table><thead><tr><th>Source</th><th class="num">Tax for the year</th>' +
+      '<th class="num">Taken so far</th><th class="num">Pending</th><th class="num">Per month · ' + esc(m.spanLbl) + '</th></tr></thead><tbody>' +
+      body +
+      '<tr><td><b>Total</b></td><td class="num"><b>' + money(tTax) + '</b></td><td class="num"><b>' + money(tTaken) +
+        '</b></td><td class="num"><b>' + money(tPend) + '</b></td><td class="num"><b>' + money(tPend / m.monthsLeft) + '</b></td></tr>' +
+    '</tbody></table></div></div>';
+}
+
 function yearTaxCard(compact) {         // compact: title and the four boxes only (Overview)
   var tx = DATA.exitTax;
   if (!tx) return "";
@@ -1093,29 +1125,52 @@ function yearTaxCard(compact) {         // compact: title and the four boxes onl
 
   // --- tax, new regime
   var std = Math.min(rg.std || 0, salGross);
+  function taxFor(inc) {                                 // slabs -> rebate -> surcharge -> cess
+    var slabTax = 0, rows = [];
+    rg.slabs.forEach(function (b) {
+      var lo = b.from > 0 ? b.from - 1 : 0, part = Math.max(0, Math.min(inc, b.to) - lo);
+      var t = part * b.rate / 100;
+      slabTax += t;
+      if (part > 0 && b.rate > 0) rows.push([moneyShort(lo) + '–' + (b.to > 1e9 ? '' : moneyShort(b.to)) + ' at ' + b.rate + '%', t]);
+    });
+    var reb = 0;
+    if (inc <= rg.rebateLimit) reb = slabTax;
+    else if (inc <= rg.reliefTo) reb = Math.max(0, slabTax - (inc - rg.rebateLimit));
+    var after = slabTax - reb, sr = 0;
+    (rg.surcharge || []).forEach(function (sc) { if (inc > sc.above) sr = sc.rate; });
+    var sur = after * sr / 100, ce = (after + sur) * (rg.cess || 0) / 100;
+    return { slabTax: slabTax, rows: rows, rebate: reb, surRate: sr, surcharge: sur, cess: ce, total: after + sur + ce };
+  }
   var income = Math.round(Math.max(0, salGross - std) + interest);
-  var slabTax = 0, slabRows = [];
-  rg.slabs.forEach(function (b) {
-    var lo = b.from > 0 ? b.from - 1 : 0, part = Math.max(0, Math.min(income, b.to) - lo);
-    var t = part * b.rate / 100;
-    slabTax += t;
-    if (part > 0 && b.rate > 0) slabRows.push([moneyShort(lo) + '–' + (b.to > 1e9 ? '' : moneyShort(b.to)) + ' at ' + b.rate + '%', t]);
-  });
-  var rebate = 0;
-  if (income <= rg.rebateLimit) rebate = slabTax;
-  else if (income <= rg.reliefTo) rebate = Math.max(0, slabTax - (income - rg.rebateLimit));
-  var afterRebate = slabTax - rebate;
-  var surRate = 0;
-  (rg.surcharge || []).forEach(function (sc) { if (income > sc.above) surRate = sc.rate; });
-  var surcharge = afterRebate * surRate / 100;
-  var cess = (afterRebate + surcharge) * (rg.cess || 0) / 100;
-  var total = afterRebate + surcharge + cess;
+  var tf = taxFor(income);
+  var slabRows = tf.rows, rebate = tf.rebate, surRate = tf.surRate, surcharge = tf.surcharge, cess = tf.cess;
+  var total = tf.total;
+  // salary's share = the tax on salary alone; interest's share = what it adds on top
+  var salaryTax = taxFor(Math.round(Math.max(0, salGross - std))).total;
+  var interestTax = total - salaryTax;
   var paidAtSource = salYear + bankTds;
   var toPay = total - paidAtSource;
   // spread over the months left in the financial year, counting this one (Oct -> Mar = 6)
   var monthsLeft = Math.max(1, (y0 + 1 - now.getFullYear()) * 12 + (2 - now.getMonth()) + 1);
   var perMonth = toPay > 0 ? toPay / monthsLeft : 0;
   var spanLbl = MONTH_NAMES[now.getMonth()] + '–Mar';
+  if (compact === "model") {
+    var share = function (amt) { return interest > 0 ? interestTax * amt / interest : 0; };
+    var fdAmt = fdInterest, sbAmt = sbSoFar + sbProj, otherAmt = Math.max(0, interest - fdAmt - sbAmt);
+    var paidOutNames = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; })
+                                              .map(function (x) { return x.name; });
+    return { fyName: fyName, monthsLeft: monthsLeft, spanLbl: spanLbl, total: total,
+      rows: [
+        { key: "salary", label: "Salary", income: salGross, tax: salaryTax, taken: salSoFar,
+          pendingBy: "employer", note: "deducted by your employer each month" },
+        { key: "fd", label: "Fixed deposit interest", income: fdAmt, tax: share(fdAmt), taken: bankTds,
+          pendingBy: "you", note: "bank TDS estimated" },
+        { key: "other", label: (paidOutNames.length ? paidOutNames.join(", ") : "Other") + " interest", income: otherAmt,
+          tax: share(otherAmt), taken: 0, pendingBy: "you", note: "no TDS" },
+        { key: "sb", label: "Savings account interest", income: sbAmt, tax: share(sbAmt), taken: 0,
+          pendingBy: "you", note: "no TDS" }
+      ] };
+  }
 
   function line(label, amount, note, strong) {
     return '<tr><td>' + (strong ? '<b>' + label + '</b>' : label) +
@@ -1217,8 +1272,7 @@ function renderOverview() {
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
 
-    yearTaxCard(true) +
-    interestTaxCards() +
+    taxOverviewCard() +
 
     '<div class="card"><h2>Income vs expenses</h2><p class="cap">Last ' + last12.length + ' months. Tap a month for detail.</p>' +
       '<div id="c-ie"></div></div>' +
@@ -1243,6 +1297,8 @@ function renderOverview() {
 
   var host = el("tab-overview");
   host.innerHTML = html;
+  var taxLink = el("ov-taxlink");
+  if (taxLink) taxLink.addEventListener("click", function () { switchTab("tax"); });
   chartIncomeExpense(el("c-ie"), last12, map, STATE.fitScale);
   chartCategories(el("c-cat"), cats, catTotal, function (cat) {
     STATE.spendCat = cat; STATE.spendScope = "month"; switchTab("spending");
@@ -2655,6 +2711,17 @@ function salaryTaxByYear(styles, meta) {
       '<tbody>' + rows + '</tbody></table></div></div>';
 }
 
+/* Everything tax in one place: the year's estimate with full workings, tax on
+   interest paid out by holdings, and salary tax by year. */
+function renderTax() {
+  var meta = DATA.salaryMeta || {}, styles = {};
+  (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; })
+    .forEach(function (p) { employerStyle(p.company, styles, meta); });
+  var html = yearTaxCard() + interestTaxCards() + salaryTaxByYear(styles, meta);
+  el("tab-tax").innerHTML = html ||
+    '<div class="card"><h2>Tax Planning</h2><div class="empty">No tax data yet.</div></div>';
+}
+
 function renderSalary() {
   var slips = (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
   var box = el("tab-salary");
@@ -2781,9 +2848,7 @@ function renderSalary() {
         '<div class="sub">regular pay ' + moneyShort(first.regular) + ' → ' + moneyShort(last.regular) + ' a month</div></div>' +
     '</div>' +
 
-    // the same card as on Overview, so the two tabs can never disagree
-    yearTaxCard() +
-    salaryTaxByYear(styles, meta) +
+
 
     '<div class="card"><h2>Year-on-year pay rise</h2>' +
       '<p class="cap">Every job since you started. Coloured bars: average regular monthly pay each year from ' +
@@ -2921,7 +2986,7 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "salary", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma"].forEach(function (t) {
+  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
@@ -2931,6 +2996,7 @@ function switchTab(name) {
   if (name === "bills")     renderBills();
   if (name === "insurance") renderInsurance();
   if (name === "salary")    renderSalary();
+  if (name === "tax")       renderTax();
   if (name === "amma")      renderAmma();
   window.scrollTo(0, 0);
 }
