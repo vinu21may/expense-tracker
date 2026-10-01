@@ -2787,6 +2787,9 @@ function renderSalary() {
         '<div class="sub">regular pay ' + moneyShort(first.regular) + ' → ' + moneyShort(last.regular) + ' a month</div></div>' +
     '</div>' +
 
+    // the same card as on Overview, so the two tabs can never disagree
+    yearTaxCard() +
+
     '<div class="card"><h2>Year-on-year pay rise</h2>' +
       '<p class="cap">Every job since you started. Coloured bars: average regular monthly pay each year from ' +
         'payslips; the % under each year is the change on the year before at the same employer (bonus, arrears and ' +
