@@ -1180,6 +1180,10 @@ function yearTaxCard() {
   var total = afterRebate + surcharge + cess;
   var paidAtSource = salYear + bankTds;
   var toPay = total - paidAtSource;
+  // spread over the months left in the financial year, counting this one (Oct -> Mar = 6)
+  var monthsLeft = Math.max(1, (y0 + 1 - now.getFullYear()) * 12 + (2 - now.getMonth()) + 1);
+  var perMonth = toPay > 0 ? toPay / monthsLeft : 0;
+  var spanLbl = MONTH_NAMES[now.getMonth()] + '–Mar';
 
   function line(label, amount, note, strong) {
     return '<tr><td>' + (strong ? '<b>' + label + '</b>' : label) +
@@ -1201,7 +1205,8 @@ function yearTaxCard() {
         '<div class="t">salary ' + money(salSoFar) + ' so far + ' + money(salYear - salSoFar) + ' to come; bank ' + money(bankTds) + '</div></div>' +
       '<div class="exit-box"><div class="lbl">' + (toPay >= 0 ? 'Left for you to pay' : 'Likely refund') + '</div>' +
         '<div class="v">' + money(Math.abs(toPay)) + '</div>' +
-        '<div class="t">' + (toPay >= 0 ? 'advance tax: 15 Dec and 15 Mar' : 'more taken at source than due') + '</div></div>' +
+        '<div class="t">' + (toPay >= 0 ? '≈ <b>' + money(perMonth) + '</b> a month over ' + monthsLeft + ' month' +
+          (monthsLeft > 1 ? 's' : '') + ' (' + spanLbl + ')' : 'more taken at source than due') + '</div></div>' +
       '<div class="exit-box"><div class="lbl">Interest income</div><div class="v">' + money(interest) + '</div>' +
         '<div class="t">' + money(otherSoFar + sbSoFar) + ' received so far</div></div>' +
     '</div>' +
@@ -1221,7 +1226,9 @@ function yearTaxCard() {
       line('Tax for the year', total, '', true) +
       line('Less salary tax (TDS)', -salYear, money(salSoFar) + ' deducted so far' + (left ? ', ' + money(salYear - salSoFar) + ' expected over ' + left + ' months' : '')) +
       line('Less bank TDS on FD interest', -bankTds, bankTds ? FD_TDS_RATE + '% once FD interest passes ' + money(FD_TDS_LIMIT) + ' (estimate)' : 'under the limit') +
-      line(toPay >= 0 ? 'Left for you to pay' : 'Likely refund', Math.abs(toPay), '', true) +
+      line(toPay >= 0 ? 'Left for you to pay' : 'Likely refund', Math.abs(toPay),
+        toPay >= 0 ? 'about ' + money(perMonth) + ' a month for the ' + monthsLeft + ' months ' + spanLbl +
+          '; advance-tax instalments fall due on 15 Dec (75% of the year\'s tax) and 15 Mar (100%)' : '', true) +
     '</tbody></table></div></div>';
 }
 
@@ -2661,6 +2668,58 @@ function ctcCard(styles, meta) {
     '</tbody></table></div></div>';
 }
 
+/* Tax deducted from salary, one row per financial year (Apr-Mar), from the
+   payslips; where a Form 16 is on file its full-year figures sit alongside, so a
+   year with missing slips shows the gap. Bonuses paid outside the payslip had
+   their own tax taken, which no payslip shows. */
+function salaryTaxByYear(styles, meta) {
+  var slips = DATA.salary || [];
+  if (!slips.length) return "";
+  var f16 = DATA.salaryForm16 || [], extra = DATA.salaryExtraBonus || [];
+  var by = {};
+  slips.forEach(function (p) {
+    var y = +p.m.slice(0, 4), mo = +p.m.slice(5, 7), y0 = mo >= 4 ? y : y - 1;
+    var r = by[y0] = by[y0] || { y0: y0, n: 0, gross: 0, tax: 0, bonus: 0, firms: [] };
+    r.n++; r.gross += p.gross || 0; r.tax += p.tax || 0; r.bonus += p.bonus || 0;
+    var sh = employerStyle(p.company, styles, meta).short;
+    if (r.firms.indexOf(sh) < 0) r.firms.push(sh);
+  });
+  // a year known only from its Form 16 (no payslips on file) still gets a row
+  f16.forEach(function (f) {
+    var y0 = +f.fy.slice(0, 4);
+    if (!by[y0]) by[y0] = { y0: y0, n: 0, gross: 0, tax: 0, bonus: 0,
+                            firms: [employerStyle(f.company, styles, meta).short] };
+  });
+  var outside = {};
+  extra.forEach(function (b) {
+    var mo = /(Jan|Feb|Mar)/.test(b.label) ? 1 : 4, y0 = mo >= 4 ? b.year : b.year - 1;
+    outside[y0] = (outside[y0] || 0) + b.bonus;
+  });
+  var nowY = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+  var rows = Object.keys(by).map(Number).sort(function (a, b) { return b - a; }).map(function (y0) {
+    var r = by[y0], fy = y0 + "-" + String(y0 + 1).slice(2);
+    var forms = f16.filter(function (f) { return f.fy === fy; });
+    var fG = forms.reduce(function (t, f) { return t + f.gross; }, 0);
+    var fT = forms.some(function (f) { return f.tax; }) ? forms.reduce(function (t, f) { return t + (f.tax || 0); }, 0) : null;
+    return '<tr><td style="white-space:nowrap"><b>FY ' + fy + '</b>' + (y0 === nowY ? ' <span class="pill">so far</span>' : '') +
+        '<div class="muted" style="font-size:12px">' + esc(r.firms.join(", ")) + '</div></td>' +
+      '<td class="num">' + r.n + (r.n < 12 && y0 !== nowY ? '<div class="muted" style="font-size:12px">of 12</div>' : '') + '</td>' +
+      '<td class="num">' + (r.n ? money(r.gross) : '<span class="muted">no slips</span>') + (outside[y0] ? '<div class="muted" style="font-size:12px">+ ' + money(outside[y0]) +
+        ' bonus off-slip</div>' : '') + '</td>' +
+      '<td class="num">' + (r.n ? '<b>' + money(r.tax) + '</b>' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (r.gross ? (r.tax / r.gross * 100).toFixed(1) + '%' : '—') + '</td>' +
+      '<td class="num">' + (forms.length ? money(fG) + '<div class="muted" style="font-size:12px">' +
+        (fT !== null ? 'tax ' + money(fT) : 'tax not stated') + '</div>' : '<span class="muted">—</span>') + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Salary tax by year</h2>' +
+    '<p class="cap">Tax deducted from your pay in each financial year (April to March), from the payslips. Where a ' +
+      'Form 16 is on file its full-year figures are shown too, so a year with missing payslips shows the gap. ' +
+      'Bonuses paid outside the payslip had their own tax taken, which is not in these totals.</p>' +
+    '<div class="tbl-scroll"><table><thead><tr><th>Year</th><th class="num">Slips</th><th class="num">Gross on slips</th>' +
+      '<th class="num">Tax deducted</th><th class="num">Share of gross</th><th class="num">Form 16</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+}
+
 function renderSalary() {
   var slips = (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
   var box = el("tab-salary");
@@ -2789,6 +2848,7 @@ function renderSalary() {
 
     // the same card as on Overview, so the two tabs can never disagree
     yearTaxCard() +
+    salaryTaxByYear(styles, meta) +
 
     '<div class="card"><h2>Year-on-year pay rise</h2>' +
       '<p class="cap">Every job since you started. Coloured bars: average regular monthly pay each year from ' +
