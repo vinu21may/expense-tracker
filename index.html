@@ -150,7 +150,9 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
    on a phone instead of letting the table scroll inside its own box. */
 .grid > * { min-width: 0; }
 @media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } }
-@media (max-width: 699px)  { .grid.k4, .grid.k5 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 699px)  { .grid.k4, .grid.k5, .grid.k6 { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 700px) and (max-width: 1039px) { .grid.k6 { grid-template-columns: repeat(3,1fr); } }
+@media (min-width: 1040px) { .grid.k6 { grid-template-columns: repeat(6,1fr); } }
 @media (min-width: 700px) and (max-width: 1039px) { .grid.k5 { grid-template-columns: repeat(3,1fr); } }
 @media (min-width: 1040px) { .grid.k5 { grid-template-columns: repeat(5,1fr); } }
 @media (min-width: 1000px) { .grid.split { grid-template-columns: 1.35fr 1fr; align-items: start; } }
@@ -184,6 +186,22 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .exit .tax { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; line-height: 1.4; }
 
 /* ------------------------------------------------------------ stat tiles */
+/* Bank accounts and credit cards as cards rather than table rows (Vinod,
+   1 Oct 2026). A row of six columns made every balance a squint on the iPad;
+   a card gives the number the room it deserves and keeps the supporting
+   figures underneath it. */
+.acct-cards { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 620px)  { .acct-cards { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .acct-cards { grid-template-columns: repeat(3,1fr); } }
+.acct-card { border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; background: var(--plane); }
+.acct-card .ac-name { font-weight: 700; font-size: 15px; }
+.acct-card .ac-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+.acct-card .ac-val  { font-size: clamp(21px, 2.6vw, 27px); font-weight: 700; letter-spacing: -0.025em; margin: 12px 0 1px; line-height: 1.1; }
+.acct-card .ac-val-lbl { font-size: 12px; color: var(--muted); }
+.acct-card .ac-rows { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 9px; display: grid; gap: 5px; }
+.acct-card .ac-row  { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12.5px; }
+.acct-card .ac-row > span:first-child { color: var(--muted); }
+.acct-card .ac-row > span:last-child  { text-align: right; }
 .tile {
   background: var(--surface-1); border: 1px solid var(--border);
   border-radius: 16px; padding: 16px 18px; box-shadow: var(--shadow);
@@ -1463,29 +1481,38 @@ function renderAssets() {
 
   var anyBalance = banks.some(function (a) { return a.balance !== null && a.balance !== undefined; });
 
+  /* One card per account. The headline is the balance NOW (stated balance plus
+     everything recorded since); the stated figure and its date sit underneath,
+     because a balance with no date is the thing that misleads. */
   var bankHtml = banks.map(function (a) {
     var m = mov[a.name];
     var stated = (a.balance !== null && a.balance !== undefined);
     var since = stated ? movementSince(a.name, a.balanceAsOf) : null;
     var projected = stated ? a.balance + since.in - since.out : null;
+    var net = since ? since.in - since.out : 0;
 
-    return '<tr>' +
-      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' + esc(a.bank) + '</div></td>' +
-      '<td class="num">' + (stated
-        ? '<b>' + money(a.balance) + '</b><div class="muted" style="font-size:11.5px">' +
-          (a.balanceAsOf ? "as of " + dayLabel(a.balanceAsOf) + " " + a.balanceAsOf.slice(0, 4) : "no date given") + '</div>'
-        : '<span class="muted">not provided</span>') + '</td>' +
-      '<td class="num">' + (stated && a.balanceAsOf
-        ? (since.n
-            ? '<span class="' + (since.in - since.out >= 0 ? "up" : "down") + '">' + money(since.in - since.out) + '</span>' +
-              '<div class="muted" style="font-size:11.5px">' + since.n + ' txns</div>'
-            : '<span class="muted">none</span>')
-        : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num">' + (projected !== null
-        ? '<b>' + money(projected) + '</b>'
-        : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num muted" style="font-size:12.5px">' + (m ? dayLabel(m.last) + " " + m.last.slice(0, 4) : "—") + '</td>' +
-    '</tr>';
+    return '<div class="acct-card">' +
+      '<div class="ac-name">' + esc(a.name) + '</div>' +
+      '<div class="ac-sub">' + esc(a.bank || "") + '</div>' +
+      (projected !== null
+        ? '<div class="ac-val">' + money(projected) + '</div><div class="ac-val-lbl">balance now</div>'
+        : '<div class="ac-val muted">—</div><div class="ac-val-lbl">no balance entered</div>') +
+      '<div class="ac-rows">' +
+        '<div class="ac-row"><span>Stated balance</span><span>' + (stated
+          ? '<b>' + money(a.balance) + '</b>' +
+            (a.balanceAsOf ? ' <span class="muted">as of ' + dayLabel(a.balanceAsOf) + " " + a.balanceAsOf.slice(0, 4) + '</span>'
+                           : ' <span class="muted">no date given</span>')
+          : '<span class="muted">not provided</span>') + '</span></div>' +
+        '<div class="ac-row"><span>Movement since</span><span>' + (stated && a.balanceAsOf
+          ? (since.n
+              ? '<span class="' + (net >= 0 ? "up" : "down") + '">' + money(net) + '</span>' +
+                ' <span class="muted">' + since.n + ' txns</span>'
+              : '<span class="muted">none</span>')
+          : '<span class="muted">—</span>') + '</span></div>' +
+        '<div class="ac-row"><span>Last transaction</span><span class="muted">' +
+          (m ? dayLabel(m.last) + " " + m.last.slice(0, 4) : "—") + '</span></div>' +
+      '</div>' +
+    '</div>';
   }).join("");
 
   /* EMI still owed, per card, from the latest statement of each loan.
@@ -1513,26 +1540,34 @@ function renderAssets() {
     }).length;
   }
 
+  /* One card per credit card. Amount due is the headline because it is what has
+     to be paid; the due date keeps its pill, which turns red once it is past. */
   var cardHtml = cards.map(function (a) {
     var e = emiFor(a);
     var stated = (a.due !== null && a.due !== undefined);
-    return '<tr>' +
-      '<td><b>' + esc(a.name) + '</b><div class="muted" style="font-size:12px">' +
-        esc(a.code || "") + (a.notes ? " · " + esc(a.notes) : "") +
-        '<br>' + cardTxnCount(a) + ' card txns on file</div></td>' +
-      '<td class="num">' + (stated ? '<b>' + money(a.due) + '</b>' : '<span class="muted">not provided</span>') + '</td>' +
-      '<td class="num">' + (a.minDue !== null && a.minDue !== undefined ? money(a.minDue) : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num muted" style="font-size:12.5px">' + (a.stmtDate ? dayLabel(a.stmtDate) + " " + a.stmtDate.slice(0, 4) : "—") + '</td>' +
-      '<td class="num">' + (a.dueDate
-        ? (a.dueDate < today
-            ? '<span class="pill bad">' + dayLabel(a.dueDate) + '</span>'
-            : '<span class="pill' + (Math.round((new Date(a.dueDate) - new Date(today)) / 86400000) <= 5 ? " warn" : "") + '">' +
-              dayLabel(a.dueDate) + '</span>')
-        : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num">' + (e && (e.p + e.i)
-        ? money(e.p + e.i) + '<div class="muted" style="font-size:11.5px">' + e.n + ' loans</div>'
-        : '<span class="muted">none</span>') + '</td>' +
-    '</tr>';
+    var overdue = a.dueDate && a.dueDate < today;
+    var soon = a.dueDate && !overdue &&
+               Math.round((new Date(a.dueDate) - new Date(today)) / 86400000) <= 5;
+    return '<div class="acct-card">' +
+      '<div class="ac-name">' + esc(a.name) + '</div>' +
+      '<div class="ac-sub">' + esc(a.code || "") + (a.notes ? " · " + esc(a.notes) : "") +
+        '<br>' + cardTxnCount(a) + ' card txns on file</div>' +
+      (stated
+        ? '<div class="ac-val">' + money(a.due) + '</div><div class="ac-val-lbl">amount due</div>'
+        : '<div class="ac-val muted">—</div><div class="ac-val-lbl">no statement entered</div>') +
+      '<div class="ac-rows">' +
+        '<div class="ac-row"><span>Due date</span><span>' + (a.dueDate
+          ? '<span class="pill' + (overdue ? " bad" : soon ? " warn" : "") + '">' + dayLabel(a.dueDate) + '</span>'
+          : '<span class="muted">—</span>') + '</span></div>' +
+        '<div class="ac-row"><span>Minimum due</span><span>' +
+          (a.minDue !== null && a.minDue !== undefined ? money(a.minDue) : '<span class="muted">—</span>') + '</span></div>' +
+        '<div class="ac-row"><span>Statement</span><span class="muted">' +
+          (a.stmtDate ? dayLabel(a.stmtDate) + " " + a.stmtDate.slice(0, 4) : "—") + '</span></div>' +
+        '<div class="ac-row"><span>EMI outstanding</span><span>' + (e && (e.p + e.i)
+          ? money(e.p + e.i) + ' <span class="muted">' + e.n + ' loans</span>'
+          : '<span class="muted">none</span>') + '</span></div>' +
+      '</div>' +
+    '</div>';
   }).join("");
 
   var goalHtml = DATA.goals.length ? DATA.goals.map(function (g) {
@@ -1694,20 +1729,13 @@ function renderAssets() {
         ? 'Balance as you stated it, plus everything recorded since, giving the balance now.'
         : 'No balances have been entered yet. Add <b>Current Balance</b> and <b>Balance As Of</b> ' +
           'columns to the Account Details sheet and they will appear here.') + '</p>' +
-      '<div class="tbl-scroll"><table><thead><tr><th>Account</th>' +
-      '<th class="num">Stated balance</th><th class="num">Movement since</th>' +
-      '<th class="num">Balance now</th><th class="num">Last txn</th></tr></thead>' +
-      '<tbody>' + bankHtml + '</tbody></table></div></div>' +
+      '<div class="acct-cards">' + bankHtml + '</div></div>' +
 
     '<div class="card"><h2>Credit cards</h2>' +
       '<p class="cap">Amount due comes from your card statement. Each card purchase is also in ' +
       'the ledger: on Transactions, pick the card in the Account filter to see them. ' +
       DATA.cc.length + ' card transactions on file.</p>' +
-      '<div class="tbl-scroll"><table><thead><tr><th>Card</th>' +
-      '<th class="num">Amount due</th><th class="num">Minimum due</th>' +
-      '<th class="num">Statement</th><th class="num">Due date</th>' +
-      '<th class="num">EMI outstanding</th></tr></thead>' +
-      '<tbody>' + cardHtml + '</tbody></table></div></div>' +
+      '<div class="acct-cards">' + cardHtml + '</div></div>' +
 
     '<div class="card"><h2>Credit card EMI loans</h2>' +
       '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
@@ -2116,6 +2144,7 @@ function renderBills() {
 
   function sum(list) { return list.reduce(function (s, o) { return s + (o.counted ? o.amount : 0); }, 0); }
   var total = sum(occ);
+  var in15 = sum(occ.filter(function (o) { return o.days <= 15; }));
   var in30 = sum(occ.filter(function (o) { return o.days <= 30; }));
   var repaid = sum(occ.filter(function (o) { return /amma/i.test(o.b.group); }));
   var anyApprox = occ.some(function (o) { return o.counted && o.approx; });
@@ -2145,6 +2174,7 @@ function renderBills() {
   // tile filters narrow the timeline only; the tiles keep their whole-window figures
   var F = STATE.billFilter;
   var shown = occ.filter(function (o) {
+    if (F === "15") return o.days <= 15;
     if (F === "30") return o.days <= 30;
     if (F === "amma") return /amma/i.test(o.b.group);
     return true;
@@ -2216,20 +2246,28 @@ function renderBills() {
   later = later.slice(0, 12);
 
   el("tab-bills").innerHTML =
-    '<div class="grid k5" style="margin-bottom:16px">' +
-      tile("all", F || "all", "Due in " + BILL_DAYS + " days", (anyApprox ? "≈ " : "") + money(total),
+    /* Ordered shortest window first (Vinod, 1 Oct 2026): what is due in 15 days
+       is what needs money in the account now, so it leads. The 60-day tile is
+       the whole window and doubles as "show everything". */
+    '<div class="grid k6" style="margin-bottom:16px">' +
+      tile("15", F, "Due in next 15 days", money(in15),
+           occ.filter(function (o) { return o.counted && o.days <= 15; }).length + ' payments', "Show only the next 15 days") +
+      tile("30", F, "Due in next 30 days", money(in30),
+           occ.filter(function (o) { return o.counted && o.days <= 30; }).length + ' payments', "Show only the next 30 days") +
+      tile("all", F || "all", "Due in next " + BILL_DAYS + " days", (anyApprox ? "≈ " : "") + money(total),
            occ.filter(function (o) { return o.counted; }).length + ' payments to ' + longDate(end), "Show everything due") +
-      tile("30", F, "Next 30 days", money(in30), 'of that total', "Show only the next 30 days") +
       tile("amma", F, "Amma repays", money(repaid), 'paid by you, owed back', "Show only what Amma repays") +
       tile("in", F, "Coming in", money(fdTotal),
            fdsIn.length ? fdsIn.map(function (f) { return esc(f.id) + ' matures ' + dayLabel(f.maturity); }).join(", ")
                         : 'no FD matures', "Open the fixed deposits on the Assets tab") +
       tile("decide", F, "To decide", decide.length, 'trials and ones to check', "Jump to the trials and items to check") +
     '</div>' +
-    (F === "30" ? filterBar('Showing only the next 30 days, to ' + longDate(isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30))) + '.', "bills-clear")
+    (F === "15" || F === "30"
+       ? filterBar('Showing only the next ' + F + ' days, to ' +
+           longDate(isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(F)))) + '.', "bills-clear")
      : F === "amma" ? filterBar('Showing only what Amma repays.', "bills-clear") : '') +
 
-    '<div class="card" id="bills-timeline"><h2>' + (F === "30" ? 'Next 30 days' : F === "amma" ? 'Amma repays' : 'Next ' + BILL_DAYS + ' days') + '</h2>' +
+    '<div class="card" id="bills-timeline"><h2>' + (F === "15" || F === "30" ? 'Next ' + F + ' days' : F === "amma" ? 'Amma repays' : 'Next ' + BILL_DAYS + ' days') + '</h2>' +
       '<p class="cap">Every bill, subscription, card bill and premium due by ' + longDate(end) + '. ' +
         '≈ marks an estimate. Amounts in grey are left out of the totals: not known yet, or not certain to be charged.</p>' +
       (shown.length
