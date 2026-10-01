@@ -177,6 +177,17 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .tax-row .chev { display: inline-block; width: 12px; color: var(--muted); }
 .tax-detail td { background: var(--plane); }
 .tax-lines { max-width: 460px; margin: 0 0 4px 16px; }
+/* Assets: the today-vs-maturity box is wider than the three tax boxes beside it */
+.grid.k4w { grid-template-columns: 1fr 1fr; }
+.grid.k4w .cmp-box { grid-column: 1 / -1; }
+@media (max-width: 499px) { .grid.k4w { grid-template-columns: 1fr; } }
+@media (min-width: 700px) { .grid.k4w { grid-template-columns: 1.6fr 1fr 1fr 1fr; } .grid.k4w .cmp-box { grid-column: auto; } }
+.cmp { display: grid; grid-template-columns: 1fr auto auto; column-gap: 12px; row-gap: 5px; margin-top: 6px;
+       font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; align-items: baseline; }
+.cmp b { color: var(--text-primary); font-weight: 600; text-align: right; white-space: nowrap; }
+.cmp .h { font-size: 11px; color: var(--muted); text-align: right; text-transform: uppercase; letter-spacing: .04em; }
+.cmp small { display: block; font-size: 11.5px; color: var(--muted); }
+.cmp .tot { border-top: 1px solid var(--grid); padding-top: 6px; color: var(--text-primary); font-weight: 600; }
 .exit { border-top: 1px solid var(--grid); padding: 14px 0; }
 .exit:first-of-type { border-top: none; }
 .exit-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; }
@@ -391,7 +402,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v37";
+var APP_BUILD = "finances-shell-v38";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1972,21 +1983,19 @@ function renderAssets() {
   }
   var matKnown = exits.filter(function (x) { return x.maturity !== null && x.maturity !== undefined; });
   var matTotal = matKnown.reduce(function (t, x) { return t + x.maturity; }, 0);
-  var sideBySide = '<div class="tbl-scroll" style="margin-bottom:12px"><table><thead><tr><th>Holding</th><th>Matures</th>' +
-      '<th class="num">If cashed in today</th><th class="num">At maturity</th><th class="num">Gain by waiting</th></tr></thead><tbody>' +
-    exits.map(function (x) {
-      var t = x.today !== null && x.today !== undefined, mk = x.maturity !== null && x.maturity !== undefined;
-      return '<tr><td>' + short(x) + '<div class="muted" style="font-size:12px">' + esc(x.kind) + '</div></td>' +
-        '<td>' + esc(monYear(x.matures)) + '</td>' +
-        '<td class="num">' + (t ? money(x.today) : '<span class="muted">' + esc(x.todayNote || 'locked') + '</span>') + '</td>' +
-        '<td class="num">' + (mk ? money(x.maturity) : '<span class="muted">' + esc(x.maturityNote || 'not known') + '</span>') + '</td>' +
-        '<td class="num">' + (t && mk ? money(x.maturity - x.today) : '<span class="muted">—</span>') + '</td></tr>';
-    }).join('') +
-    '<tr><td><b>Total</b></td><td></td><td class="num"><b>' + money(nowTotal) + '</b></td>' +
-      '<td class="num"><b>' + money(matTotal) + '</b></td><td></td></tr>' +
-    '</tbody></table></div>' +
-    '<p class="cap" style="margin-top:-4px">"At maturity" is the amount paid out on that date; the 54EC bonds\' yearly interest is paid ' +
-      'before then and is not in it. Each total adds only the amounts in its own column, so the two cover different holdings.</p>';
+  // today vs maturity, one line per holding: name + month | today | at maturity
+  var cell = function (v, note) { return v !== null && v !== undefined ? money(v) : '<span class="muted">' + esc(note) + '</span>'; };
+  var sideBySide = '<div class="exit-box cmp-box"><div class="lbl">Today vs at maturity</div>' +
+      '<div class="v">' + money(nowTotal) + '</div>' +
+      '<div class="cmp"><span></span><span class="h">Today</span><span class="h">At maturity</span>' +
+      exits.map(function (x) {
+        return '<span>' + short(x) + '<small>' + esc(monYear(x.matures)) + '</small></span>' +
+          '<b>' + cell(x.today, x.today === null ? 'locked' : '—') + '</b>' +
+          '<b>' + cell(x.maturity, '—') + '</b>';
+      }).join('') +
+      '<span class="tot">Total</span><b class="tot">' + money(nowTotal) + '</b><b class="tot">' + money(matTotal) + '</b>' +
+      '</div>' +
+      '<div class="why">Each total adds only its own column. 54EC yearly interest is paid before maturity and is not in it.</div></div>';
 
   var cashable = exits.filter(function (x) { return x.today !== null && x.today !== undefined; });
   var matTaxable = exits.reduce(function (t, x) { return t + (x.maturityTaxable || 0); }, 0);
@@ -2024,28 +2033,28 @@ function renderAssets() {
           'maturity, with the part that counts as taxable income. Estimates to plan with, not tax advice.' +
           (exits[0].asOf ? ' Worked out on ' + esc(exits[0].asOf.split("-").reverse().join("/")) +
             '; fixed deposits are recalculated each day.' : '') + '</p>' +
-          sideBySide +
-          '<div class="grid k3" style="margin-bottom:6px">' +
+          '<div class="grid k4w" style="margin-bottom:6px">' +
+            sideBySide +
             (taxMult !== null
               ? '<div class="exit-box"><div class="lbl">Tax if cashed in today</div><div class="v">' + money(nowTaxDue) + '</div>' +
-                  kv('You could get today', nowTotal) +
-                  kv('of which taxable income', nowTax, 'note') +
-                  kvText('Tax rate', esc(taxLbl)) +
+                  kv('Cash in today', nowTotal) +
+                  kv('Taxable part', nowTax) +
                   kv('Tax', nowTaxDue, 'total') +
+                  kvText('at ' + esc(taxLbl), '', 'note') +
                   kv('In hand after tax', nowTotal - nowTaxDue) + '</div>'
               : '') +
             '<div class="exit-box"><div class="lbl">Locked until maturity</div><div class="v">' + money(lockedTotal) + '</div>' +
-              locked.map(function (x) { return kv(short(x), x.book); }).join('') +
-              kv('Total at book value', lockedTotal, 'total') +
-              kvText('Cannot be cashed in early', '', 'note') + '</div>' +
+              locked.map(function (x) { return kv(short(x).replace(' Capital Gain Bonds', ' bonds'), x.book); }).join('') +
+              kv('Total', lockedTotal, 'total') +
+              kvText('At book value; cannot be cashed in early', '', 'note') + '</div>' +
             (taxMult !== null
               ? '<div class="exit-box"><div class="lbl">Tax if all held to maturity</div><div class="v">' + money(holdTaxDue) + '</div>' +
-                  kv('Taxable at maturity', matTaxable) +
-                  kv('Taxable interest before then', beforeTaxable) +
-                  kv('Total taxable income', matTaxable + beforeTaxable, 'total') +
-                  kvText('Tax rate', esc(taxLbl)) +
+                  kv('At maturity', matTaxable) +
+                  kv('Interest before', beforeTaxable) +
+                  kv('Taxable', matTaxable + beforeTaxable, 'total') +
                   kv('Tax', holdTaxDue, 'total') +
-                  kvText('Spread over the years it falls due; holdings not yet known left out', '', 'note') + '</div>'
+                  kvText('at ' + esc(taxLbl), '', 'note') +
+                  kvText('Spread over the years it falls due', '', 'note') + '</div>'
               : '') +
           '</div>' +
           exitHtml +
