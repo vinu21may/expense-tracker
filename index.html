@@ -1078,21 +1078,36 @@ function fdInterestTaxCard() {
     '</tbody></table></div></div>';
 }
 
-/* The year's income tax in one place: salary tax (deducted by the employer),
-   plus tax on interest from holdings that pay it out and from FDs, split into
-   what is already deducted at source and what is left to pay. Salary for the
-   rest of the year is projected at the latest slip's monthly tax -- employers
-   re-balance it through the year (e.g. after a bonus), so it is an estimate. */
+/* The year's income tax, worked out the way Vinod's tax calculator (the
+   Nithya TaxCalc he downloads each year) does it under the new regime: total
+   taxable income through the slabs, rebate, surcharge and cess -- then less the
+   tax already deducted at source. The slabs and limits come from data.json
+   (exitTax.regime), copied out of the calculator file by add_exit_values.py, so
+   this code holds no rates of its own.
+
+   Income for the financial year:
+     salary   - payslips so far, plus the remaining months at the latest month
+                without a bonus (employers re-balance tax after a raise or a
+                bonus, so this part is an estimate)
+     interest - credits already in the ledger this year (Interest sub-category),
+                savings interest for quarters not yet credited at the latest
+                quarter's rate, and FD interest still building up on FDs held
+                now (taxed as it accrues), less anything those FDs already paid.
+   Without the regime rules (an older data.json) it falls back to tax on
+   interest at the marginal rate. */
 function yearTaxCard() {
   var tx = DATA.exitTax;
   if (!tx) return "";
-  var mult = tx.slab / 100 * (1 + tx.cess / 100);
+  var rg = tx.regime;
   var now = new Date(), y0 = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   var fyFrom = y0 + "-04", fyTo = (y0 + 1) + "-03";
+  var dFrom = y0 + "-04-01", dTo = (y0 + 1) + "-03-31";
+  var today = now.toISOString().slice(0, 10);
   var fyName = "FY " + y0 + "-" + String(y0 + 1).slice(2);
 
-  // salary: slips so far this year, plus the remaining months at the latest rate
+  // --- salary
   var slips = (DATA.salary || []).filter(function (p) { return p.m >= fyFrom && p.m <= fyTo; });
+  var salGrossSoFar = slips.reduce(function (t, p) { return t + (p.gross || 0); }, 0);
   var salSoFar = slips.reduce(function (t, p) { return t + (p.tax || 0); }, 0);
   var lastSlip = slips[slips.length - 1];
   var left = 0;
@@ -1100,53 +1115,113 @@ function yearTaxCard() {
     var ly = +lastSlip.m.slice(0, 4), lm = +lastSlip.m.slice(5, 7);
     left = (y0 + 1 - ly) * 12 + (3 - lm);                 // months after the last slip to March
   }
-  // project at an ordinary month's tax: a bonus or arrears month carries one-off
-  // tax that will not repeat (Sep 2026's bonus quadrupled that month's TDS)
+  // project at an ordinary month: a bonus or arrears month will not repeat
   var plain = slips.filter(function (p) { return !p.bonus && !p.arrears && !p.oneOff; });
   var rateSlip = plain.length ? plain[plain.length - 1] : lastSlip;
+  var salGross = salGrossSoFar + (rateSlip ? left * rateSlip.gross : 0);
   var salYear = salSoFar + (rateSlip ? left * rateSlip.tax : 0);
 
-  // interest paid out by holdings along the way: the payout(s) made this year
-  var paidOut = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; });
-  var poTax = paidOut.reduce(function (t, x) { return t + (x.interestThisFY || 0) * mult; }, 0);
-
-  // FDs: same accrual as the FD card
-  var fd = fdYear(y0), fdTax = fd.interest * mult;
-
-  var total = salYear + poTax + fdTax;
-  var deducted = salYear + fd.tds;
-  var toPay = total - deducted;
-  function row(name, tax, atSource, note) {
-    return '<tr><td>' + name + (note ? '<div class="muted" style="font-size:12px">' + note + '</div>' : '') + '</td>' +
-      '<td class="num">' + money(tax) + '</td><td class="num">' + money(atSource) + '</td>' +
-      '<td class="num"><b>' + money(tax - atSource) + '</b></td></tr>';
+  // --- interest
+  var MONTHS = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+  function tillDate(ds) {                                  // "INTEREST PAID TILL 30-SEP-2026"
+    var m = /TILL (\d{2})-([A-Z]{3})-(\d{4})/.exec(ds || "");
+    return m ? m[3] + "-" + String(MONTHS[m[2]] + 1).padStart(2, "0") + "-" + m[1] : null;
   }
-  return '<div class="card"><h2>Tax for the year · ' + fyName + '</h2>' +
-    '<p class="cap">Estimated income tax for the year at your ' + tx.slab + '% slab plus ' + tx.cess + '% cess. ' +
-      'Salary tax is deducted by your employer; tax on interest is mostly yours to pay through advance tax ' +
-      '(instalments 15 Jun, 15 Sep, 15 Dec, 15 Mar) or with your return. Estimates to plan with, not tax advice.</p>' +
+  var credits = (DATA.txns || []).filter(function (t) { return t.s === "Interest" && t.cr > 0; });
+  var sb = credits.filter(function (t) { var d = tillDate(t.ds); return d && d >= dFrom && d <= dTo; });
+  var other = credits.filter(function (t) { return !tillDate(t.ds) && t.d >= dFrom && t.d <= dTo; });
+  var sbSoFar = sb.reduce(function (s, t) { return s + t.cr; }, 0);
+  var lastTill = sb.reduce(function (m, t) { var d = tillDate(t.ds); return d > m ? d : m; }, "");
+  var lastQ = sb.filter(function (t) { return tillDate(t.ds) === lastTill; }).reduce(function (s, t) { return s + t.cr; }, 0);
+  var qEnds = [y0 + "-06-30", y0 + "-09-30", y0 + "-12-31", (y0 + 1) + "-03-31"];
+  var qLeft = qEnds.filter(function (q) { return q > (lastTill || dFrom); }).length;
+  var sbProj = lastQ * qLeft;
+  var otherSoFar = other.reduce(function (s, t) { return s + t.cr; }, 0);
+  // FDs held now: their share of interest for this year, less what they already paid out
+  var DAY = 86400000, fdRest = 0;
+  (DATA.fds || []).forEach(function (f) {
+    if (!f.maturity || f.maturity <= today) return;        // matured: its interest is in the ledger
+    var a = new Date(f.start + "T00:00:00"), b = new Date(f.maturity + "T00:00:00");
+    var days = Math.round((b - a) / DAY);
+    if (!(days > 0)) return;
+    var lo = Math.max(a, new Date(y0, 3, 1)), hi = Math.min(b, new Date(y0 + 1, 3, 1));
+    var share = hi > lo ? f.interest * Math.round((hi - lo) / DAY) / days : 0;
+    var paid = credits.filter(function (t) {
+      return f.acct && t.ds.indexOf(f.acct) >= 0 && t.d >= f.start;
+    }).reduce(function (s, t) { return s + t.cr; }, 0);
+    fdRest += Math.max(0, share - paid);
+  });
+  var interest = otherSoFar + sbSoFar + sbProj + fdRest;
+  // bank TDS: 10% once FD interest from the bank passes the limit (same rule as the FD card)
+  var fdInterest = other.filter(function (t) { return /INTEREST CREDIT/.test(t.ds); })
+                        .reduce(function (s, t) { return s + t.cr; }, 0) + fdRest;
+  var bankTds = fdInterest > FD_TDS_LIMIT ? fdInterest * FD_TDS_RATE / 100 : 0;
+
+  if (!rg) return "";                                       // older data: the interest cards still show
+
+  // --- tax, new regime
+  var std = Math.min(rg.std || 0, salGross);
+  var income = Math.round(Math.max(0, salGross - std) + interest);
+  var slabTax = 0, slabRows = [];
+  rg.slabs.forEach(function (b) {
+    var lo = b.from > 0 ? b.from - 1 : 0, part = Math.max(0, Math.min(income, b.to) - lo);
+    var t = part * b.rate / 100;
+    slabTax += t;
+    if (part > 0 && b.rate > 0) slabRows.push([moneyShort(lo) + '–' + (b.to > 1e9 ? '' : moneyShort(b.to)) + ' at ' + b.rate + '%', t]);
+  });
+  var rebate = 0;
+  if (income <= rg.rebateLimit) rebate = slabTax;
+  else if (income <= rg.reliefTo) rebate = Math.max(0, slabTax - (income - rg.rebateLimit));
+  var afterRebate = slabTax - rebate;
+  var surRate = 0;
+  (rg.surcharge || []).forEach(function (sc) { if (income > sc.above) surRate = sc.rate; });
+  var surcharge = afterRebate * surRate / 100;
+  var cess = (afterRebate + surcharge) * (rg.cess || 0) / 100;
+  var total = afterRebate + surcharge + cess;
+  var paidAtSource = salYear + bankTds;
+  var toPay = total - paidAtSource;
+
+  function line(label, amount, note, strong) {
+    return '<tr><td>' + (strong ? '<b>' + label + '</b>' : label) +
+      (note ? '<div class="muted" style="font-size:12px">' + note + '</div>' : '') + '</td>' +
+      '<td class="num">' + (amount === null ? '' : (function (v) {
+        var t = (amount < 0 ? '−' : '') + v;
+        return strong ? '<b>' + t + '</b>' : t;
+      })(money(Math.abs(amount)))) + '</td></tr>';
+  }
+  var src = esc(rg.source || "your tax calculator");
+  return '<div class="card"><h2>Tax for the year · ' + fyName + ' · new regime</h2>' +
+    '<p class="cap">Worked out the way your tax calculator does it (' + src + '): your whole income for the ' +
+      'year through the new-regime slabs, then less the tax already taken at source. A heads-up to plan with, ' +
+      'not tax advice — the October raise, any ex-gratia and the rest of the year\'s interest will move it.</p>' +
     '<div class="grid k4">' +
-      '<div class="exit-box"><div class="lbl">Total tax for the year</div><div class="v">' + money(total) + '</div>' +
-        '<div class="t">salary + interest</div></div>' +
-      '<div class="exit-box"><div class="lbl">Deducted at source</div><div class="v">' + money(deducted) + '</div>' +
-        '<div class="t">salary tax (' + money(salSoFar) + ' taken so far) + bank TDS on FDs</div></div>' +
-      '<div class="exit-box"><div class="lbl">Left for you to pay</div><div class="v">' + money(toPay) + '</div>' +
-        '<div class="t">tax on interest not covered by TDS</div></div>' +
-      '<div class="exit-box"><div class="lbl">Salary tax this year</div><div class="v">' + money(salYear) + '</div>' +
-        '<div class="t">' + slips.length + ' slips so far' + (left ? ' + ' + left + ' months at ' + money(rateSlip.tax) : '') + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Tax for the year</div><div class="v">' + money(total) + '</div>' +
+        '<div class="t">on ' + money(income) + ' taxable income</div></div>' +
+      '<div class="exit-box"><div class="lbl">Taken at source</div><div class="v">' + money(paidAtSource) + '</div>' +
+        '<div class="t">salary ' + money(salSoFar) + ' so far + ' + money(salYear - salSoFar) + ' to come; bank ' + money(bankTds) + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">' + (toPay >= 0 ? 'Left for you to pay' : 'Likely refund') + '</div>' +
+        '<div class="v">' + money(Math.abs(toPay)) + '</div>' +
+        '<div class="t">' + (toPay >= 0 ? 'advance tax: 15 Dec and 15 Mar' : 'more taken at source than due') + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Interest income</div><div class="v">' + money(interest) + '</div>' +
+        '<div class="t">' + money(otherSoFar + sbSoFar) + ' received so far</div></div>' +
     '</div>' +
-    '<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>Source</th><th class="num">Tax</th>' +
-      '<th class="num">Deducted at source</th><th class="num">Left to pay</th></tr></thead><tbody>' +
-      row('Salary', salYear, salYear, money(salSoFar) + ' deducted Apr to ' + (lastSlip ? monthLabel(lastSlip.m) : '—') +
-        (left ? '; rest projected at ' + money(rateSlip.tax) + ' a month (' + monthLabel(rateSlip.m) +
-                '\'s, the latest month without a bonus)' : '')) +
-      paidOut.map(function (x) {
-        return row(esc(x.name) + ' interest', (x.interestThisFY || 0) * mult, 0,
-                   money(x.interestThisFY || 0) + ' paid this year; no TDS');
-      }).join("") +
-      row('Fixed deposit interest', fdTax, fd.tds, money(fd.interest) + ' interest building up this year; bank TDS estimated') +
-      '<tr><td><b>Total</b></td><td class="num"><b>' + money(total) + '</b></td><td class="num"><b>' + money(deducted) +
-        '</b></td><td class="num"><b>' + money(toPay) + '</b></td></tr>' +
+    '<div class="tbl-scroll" style="margin-top:12px"><table><tbody>' +
+      line('Salary', salGross, money(salGrossSoFar) + ' from ' + slips.length + ' payslips' +
+        (left ? ' + ' + left + ' months at ' + money(rateSlip.gross) + ' (' + monthLabel(rateSlip.m) + ', the latest month without a bonus)' : '')) +
+      line('Less standard deduction', -std, '') +
+      line('Interest already received', otherSoFar, other.length + ' credits this year — FDs, bonds and others') +
+      line('Savings account interest', sbSoFar + sbProj, money(sbSoFar) + ' credited' +
+        (qLeft ? ' + ' + qLeft + ' more quarter' + (qLeft > 1 ? 's' : '') + ' at ' + money(lastQ) + ' (latest quarter)' : '')) +
+      line('FD interest still building up', fdRest, 'on the FDs you hold now, taxed as it accrues') +
+      line('Taxable income', income, '', true) +
+      slabRows.map(function (r) { return line('Tax ' + r[0], r[1], ''); }).join("") +
+      (rebate ? line('Less rebate (sec 87A)', -rebate, '') : '') +
+      (surcharge ? line('Surcharge ' + surRate + '%', surcharge, '') : '') +
+      line('Cess ' + (rg.cess || 0) + '%', cess, '') +
+      line('Tax for the year', total, '', true) +
+      line('Less salary tax (TDS)', -salYear, money(salSoFar) + ' deducted so far' + (left ? ', ' + money(salYear - salSoFar) + ' expected over ' + left + ' months' : '')) +
+      line('Less bank TDS on FD interest', -bankTds, bankTds ? FD_TDS_RATE + '% once FD interest passes ' + money(FD_TDS_LIMIT) + ' (estimate)' : 'under the limit') +
+      line(toPay >= 0 ? 'Left for you to pay' : 'Likely refund', Math.abs(toPay), '', true) +
     '</tbody></table></div></div>';
 }
 
