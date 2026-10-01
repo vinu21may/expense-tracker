@@ -1100,7 +1100,11 @@ function yearTaxCard() {
     var ly = +lastSlip.m.slice(0, 4), lm = +lastSlip.m.slice(5, 7);
     left = (y0 + 1 - ly) * 12 + (3 - lm);                 // months after the last slip to March
   }
-  var salYear = salSoFar + (lastSlip ? left * lastSlip.tax : 0);
+  // project at an ordinary month's tax: a bonus or arrears month carries one-off
+  // tax that will not repeat (Sep 2026's bonus quadrupled that month's TDS)
+  var plain = slips.filter(function (p) { return !p.bonus && !p.arrears && !p.oneOff; });
+  var rateSlip = plain.length ? plain[plain.length - 1] : lastSlip;
+  var salYear = salSoFar + (rateSlip ? left * rateSlip.tax : 0);
 
   // interest paid out by holdings along the way: the payout(s) made this year
   var paidOut = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; });
@@ -1129,12 +1133,13 @@ function yearTaxCard() {
       '<div class="exit-box"><div class="lbl">Left for you to pay</div><div class="v">' + money(toPay) + '</div>' +
         '<div class="t">tax on interest not covered by TDS</div></div>' +
       '<div class="exit-box"><div class="lbl">Salary tax this year</div><div class="v">' + money(salYear) + '</div>' +
-        '<div class="t">' + slips.length + ' slips so far' + (left ? ' + ' + left + ' months at ' + money(lastSlip.tax) : '') + '</div></div>' +
+        '<div class="t">' + slips.length + ' slips so far' + (left ? ' + ' + left + ' months at ' + money(rateSlip.tax) : '') + '</div></div>' +
     '</div>' +
     '<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>Source</th><th class="num">Tax</th>' +
       '<th class="num">Deducted at source</th><th class="num">Left to pay</th></tr></thead><tbody>' +
       row('Salary', salYear, salYear, money(salSoFar) + ' deducted Apr to ' + (lastSlip ? monthLabel(lastSlip.m) : '—') +
-        (left ? '; rest projected at the current monthly rate' : '')) +
+        (left ? '; rest projected at ' + money(rateSlip.tax) + ' a month (' + monthLabel(rateSlip.m) +
+                '\'s, the latest month without a bonus)' : '')) +
       paidOut.map(function (x) {
         return row(esc(x.name) + ' interest', (x.interestThisFY || 0) * mult, 0,
                    money(x.interestThisFY || 0) + ' paid this year; no TDS');
@@ -2650,7 +2655,8 @@ function renderSalary() {
       '<div class="tile"><div class="lbl">Regular pay now</div><div class="val">' + money(last.regular) + '</div>' +
         '<div class="sub">a month, gross · ' + esc(styles[last.company].short) + ', ' + monthLabel(last.m) + '</div></div>' +
       '<div class="tile"><div class="lbl">Take-home now</div><div class="val">' + money(last.net) + '</div>' +
-        '<div class="sub">after ' + money(last.ded) + ' deductions</div></div>' +
+        '<div class="sub">after ' + money(last.ded) + ' deductions' +
+          (last.bonus ? ' · includes ' + money(last.bonus) + ' bonus' : '') + '</div></div>' +
       '<div class="tile"><div class="lbl">Bonuses received</div><div class="val">' + money(bonusTotal) + '</div>' +
         '<div class="sub">' + payouts.length + ' payouts since ' + (payouts.length ? payouts[0].m.slice(0, 4) : "—") + '</div></div>' +
       '<div class="tile"><div class="lbl">Growth since ' + first.m.slice(0, 4) + '</div><div class="val">' +
