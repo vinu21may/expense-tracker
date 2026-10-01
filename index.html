@@ -287,6 +287,26 @@ svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
 .legend span { display: inline-flex; align-items: center; gap: 7px; }
 .hit { fill: transparent; cursor: pointer; touch-action: manipulation; }
 
+/* ---------------------------------------------------- where to invest */
+.inv-in .f { flex: 1 1 170px; }
+.inv-in input[type=text], .inv-in select { min-width: 0; }
+.inv-quick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.inv-quick button { padding: 8px 14px; min-height: 38px; font-size: 14px; }
+.inv-quick button[aria-pressed="true"] { border-color: var(--series-1); box-shadow: 0 0 0 1px var(--series-1); }
+.inv-pills { margin: 5px 0 0 16px; display: flex; gap: 5px; flex-wrap: wrap; }
+.inv-barcell { min-width: 110px; }
+.inv-tbl td:first-child { min-width: 240px; }
+.inv-tbl td:nth-child(3) { min-width: 90px; }
+.inv-bar { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 6px; overflow: hidden; }
+.inv-bar span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+.inv-detail { margin-left: 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 760px; }
+.inv-detail .tax-lines { margin: 0 0 8px; }
+.inv-detail p { margin: 6px 0; }
+.inv-off td { color: var(--muted); font-size: 13px; }
+.inv-sep { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: 18px; }
+.inv-rules td { font-size: 13px; min-width: 120px; }
+.inv-rules td:first-child { min-width: 170px; }
+.inv-notes { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
 /* ---------------------------------------------------------------- tables */
 .tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -372,6 +392,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
+      <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
       <button role="tab" data-tab="bills"     aria-selected="false">Upcoming Bills</button>
@@ -383,6 +404,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-accounts" class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
+    <section id="tab-invest"   class="hide"></section>
     <section id="tab-bills"     class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
@@ -402,7 +424,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v38";
+var APP_BUILD = "finances-shell-v39";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3157,6 +3179,319 @@ function renderSalary() {
   if (payouts.length) chartBonus(el("sal-bonus"), payouts, styles);
 }
 
+/* =====================================================================
+   Where to Invest: type an amount and how long it can stay put; every
+   option is worked out the same way and ranked by what is left after tax.
+
+   The rates below are public market rates, checked on RATES_AS_OF. They are
+   the one thing in this tab that goes stale: Post Office rates are reset each
+   quarter, the RBI bond every six months, FD rates whenever a bank decides.
+   The tax rate comes from data.json (exitTax); the insurance premium limits
+   are checked against the policies in data.json.
+
+   Method, the same for every option:
+     - interest paid out along the way is treated as put back at the same rate,
+       so every option compounds and can be compared as "% a year";
+     - interest taxed at the slab is taxed each year as it is earned;
+     - fund gains are taxed once, when sold at the end;
+     - an option whose lock-in runs past the chosen period is listed
+       separately as "not a fit", with the reason.
+   ===================================================================== */
+var RATES_AS_OF = "2026-10-01";
+var EQUITY_LTCG = 12.5, EQUITY_STCG = 20, EQUITY_ALLOWANCE = 125000;
+var ULIP_PREMIUM_LIMIT = 250000, TRAD_PREMIUM_LIMIT = 500000;
+
+function ann(r, perYear) { return Math.pow(1 + r / 100 / perYear, perYear) - 1; }   // effective yearly rate
+
+var SCHEMES = [
+  { id: "sav", name: "Leave it in the savings account", kind: "Bank", rateTxt: "2.5%",
+    rate: function () { return 0.025; }, tax: "slab", lock: 0, guaranteed: true, safety: "Bank (₹5L insured)", safe: 2,
+    rules: { lock: "None", exit: "Any time", tax: "Interest taxed at your slab", paid: "Quarterly", limit: "None", tds: "None" },
+    about: "The baseline: what the money earns if you do nothing." },
+  { id: "fd", name: "Bank FD (HDFC Bank)", kind: "Bank FD", group: "fd",
+    rateTxt: function (H) { return H >= 5 ? "6.40% (5 yr)" : H >= 3 ? "6.45% (3 yr)" : "6.25% (1 yr, renewed)"; },
+    rate: function (H) { return ann(H >= 5 ? 6.40 : H >= 3 ? 6.45 : 6.25, 4); }, tax: "slab", lock: 0,
+    guaranteed: true, safety: "Bank (₹5L insured per bank)", safe: 2,
+    rules: { lock: "None", exit: "Any time; the rate drops by about 1%", tax: "Interest taxed at your slab as it builds up, even if paid only at maturity",
+             paid: "Monthly, quarterly or at maturity", limit: "None", tds: "10% once a bank's interest to you passes ₹50,000 in a year" },
+    about: "Compounded quarterly. Rates from HDFC Bank's card; SBI and ICICI are within 0.1–0.2%. DICGC insures only ₹5 lakh per bank, so large amounts are safer split across banks." },
+  { id: "potd", name: "Post Office Time Deposit", kind: "Post Office", group: "po",
+    rateTxt: function (H) { return H >= 5 ? "7.5% (5 yr)" : H >= 3 ? "7.1% (3 yr)" : H >= 2 ? "7.0% (2 yr)" : "6.9% (1 yr)"; },
+    rate: function (H) { return ann(H >= 5 ? 7.5 : H >= 3 ? 7.1 : H >= 2 ? 7.0 : 6.9, 4); }, tax: "slab", lock: 0.5,
+    guaranteed: true, safety: "Government of India", safe: 1,
+    rules: { lock: "6 months", exit: "After 6 months; before 1 year only the savings rate (4%), after that 2% less than the deposit rate",
+             paid: "Once a year", tax: "Interest taxed at your slab", limit: "None", tds: "10% once interest passes ₹50,000 a year" },
+    about: "Worked out quarterly and paid once a year. Government-backed with no ₹5 lakh cap, so the whole amount is safe in one place. Open at any post office or through IPPB." },
+  { id: "mis", name: "Post Office Monthly Income Scheme", kind: "Post Office", cap: 900000, rateTxt: "7.4%",
+    rate: function () { return 0.074; }, tax: "slab", lock: 1, guaranteed: true, safety: "Government of India", safe: 1,
+    penalty: function (H) { return H >= 5 ? 0 : H >= 3 ? 0.01 : 0.02; },
+    rules: { lock: "1 year (term 5 years)", exit: "After 1 year: 2% of the deposit is cut; after 3 years, 1%",
+             paid: "Every month", tax: "Interest taxed at your slab", limit: "₹9 lakh alone, ₹15 lakh joint", tds: "None (you pay the tax yourself)" },
+    about: "Built for a steady monthly income rather than growth. The limit is per person across all MIS accounts." },
+  { id: "nsc", name: "National Savings Certificate (NSC)", kind: "Post Office", rateTxt: "7.7%",
+    rate: function () { return 0.077; }, tax: "slab", lock: 5, guaranteed: true, safety: "Government of India", safe: 1,
+    rules: { lock: "5 years", exit: "Not allowed (only on death or court order)", paid: "At maturity, compounded yearly",
+             tax: "Interest taxed at your slab each year (the 80C deduction is old regime only)", limit: "None", tds: "None" },
+    about: "Rate fixed for the full 5 years at the rate on the day you buy. Can be pledged for a loan." },
+  { id: "kvp", name: "Kisan Vikas Patra (KVP)", kind: "Post Office", rateTxt: "7.5% (doubles in 115 months)",
+    rate: function () { return 0.075; }, tax: "slab", lock: 2.5, guaranteed: true, safety: "Government of India", safe: 1,
+    rules: { lock: "2½ years", exit: "After 2½ years, at a reduced value from the post office table", paid: "At maturity (9 years 7 months)",
+             tax: "Interest taxed at your slab as it builds up", limit: "None (PAN needed above ₹50,000)", tds: "None" },
+    about: "Doubles the money in 115 months. Cashing in before that is allowed after 2½ years but pays a little less than shown here." },
+  { id: "ppf", name: "Public Provident Fund (PPF)", kind: "Post Office / bank", cap: 150000, rateTxt: "7.1%, tax-free",
+    rate: function () { return 0.071; }, tax: "free", lock: 15, guaranteed: true, safety: "Government of India", safe: 1,
+    rules: { lock: "15 years", exit: "Partial withdrawal from year 7; closing early only after 5 years and only for illness, education or moving abroad",
+             paid: "Added each year, paid at maturity", tax: "Fully tax-free: interest and maturity", limit: "₹1.5 lakh a year", tds: "None" },
+    about: "The only option here that is completely tax-free with no conditions, but only ₹1.5 lakh can go in each year. Rate is reset every quarter for the whole balance." },
+  { id: "scss", name: "Senior Citizen Savings Scheme (SCSS)", kind: "Post Office", rateTxt: "8.2%",
+    rate: function () { return 0.082; }, tax: "slab", lock: 5, guaranteed: true, safety: "Government of India", safe: 1,
+    notYet: "Open only from age 60 (55–60 only when retiring, within a month of the retirement money)",
+    rules: { lock: "5 years", exit: "After 1 year with a 1.5% cut; 1% after 2 years", paid: "Every quarter",
+             tax: "Interest taxed at your slab", limit: "₹30 lakh", tds: "Above ₹1 lakh a year interest" },
+    about: "The highest guaranteed rate on the list, but only for senior citizens. Worth remembering for later." },
+  { id: "rbi", name: "RBI Floating Rate Savings Bond", kind: "Government bond", rateTxt: "8.05% until 31 Dec 2026",
+    rate: function () { return ann(8.05, 2); }, tax: "slab", lock: 7, guaranteed: false, floating: true, safety: "Government of India", safe: 1,
+    rules: { lock: "7 years (earlier only for 60+)", exit: "Not allowed under 60; can't be sold or transferred", paid: "Every 6 months, no cumulative option",
+             tax: "Interest taxed at your slab", limit: "None", tds: "Yes, above the threshold" },
+    about: "Pays NSC rate + 0.35%, reset every six months (next on 1 Jan 2027), so 8.05% is not fixed for 7 years. Buy through net banking at SBI, HDFC Bank, ICICI and others." },
+  { id: "54ec", name: "54EC bonds (REC / PFC / IRFC)", kind: "Government company bond", cap: 5000000, rateTxt: "5.25%",
+    rate: function () { return 0.0525; }, tax: "slab", lock: 5, guaranteed: true, safety: "Government-owned, AAA", safe: 1,
+    rules: { lock: "5 years", exit: "Not allowed", paid: "Once a year", tax: "Interest taxed at your slab; the money put in is exempt from capital gains tax",
+             limit: "₹50 lakh per financial year", tds: "None" },
+    about: "Low as a plain investment. It only makes sense for a long-term capital gain from selling land or a building, invested within 6 months of the sale: that gain then escapes 12.5% capital gains tax (13% with cess), which is what makes up for the low rate." },
+  { id: "bajaj", name: "Corporate FD (Bajaj Finance, AAA)", kind: "Company FD", rateTxt: "6.95%",
+    rate: function () { return 0.0695; }, tax: "slab", lock: 0.25, guaranteed: true, safety: "Company, AAA (not insured)", safe: 3,
+    rules: { lock: "3 months", exit: "After 3 months, at a lower rate", paid: "Monthly, quarterly or at maturity",
+             tax: "Interest taxed at your slab", limit: "None", tds: "10% once interest passes ₹5,000 a year" },
+    about: "Pays only a little more than a bank FD and has no deposit insurance." },
+  { id: "shriram", name: "Corporate FD (Shriram Finance, AA+)", kind: "Company FD",
+    rateTxt: function (H) { return H >= 3 ? "7.60% (3–5 yr)" : "7.00% (1–2 yr)"; },
+    rate: function (H) { return H >= 3 ? 0.076 : 0.07; }, tax: "slab", lock: 0.25, guaranteed: true, safety: "Company, AA+ (not insured)", safe: 4,
+    rules: { lock: "3 months", exit: "After 3 months, at a lower rate", paid: "Monthly, quarterly or at maturity",
+             tax: "Interest taxed at your slab", limit: "None", tds: "10% once interest passes ₹5,000 a year" },
+    about: "A real premium over bank FDs for 3–5 years, in exchange for company risk: there is no insurance, and some finance companies failed in 2018–20." },
+  { id: "arb", name: "Arbitrage fund (mutual fund)", kind: "Mutual fund", rateTxt: "≈6.4% expected",
+    rate: function () { return 0.064; }, tax: "equity", lock: 0, guaranteed: false, safety: "Low risk, market-neutral", safe: 3,
+    rules: { lock: "None", exit: "Money back in 1–2 working days; ≈0.25% exit load in the first 15–30 days", paid: "Nothing paid out; units grow",
+             tax: "Equity rules: 20% if sold within 12 months, 12.5% after, with ₹1.25 lakh of equity gains tax-free each year", limit: "None", tds: "None" },
+    about: "Buys shares and sells futures on the same shares; the locked-in price gap is the return. Not guaranteed: quiet markets bring stretches near 5.5%. The 6.4% allows for the higher futures tax (STT) from April 2026. Choose a large fund, Direct plan, expense ratio under 0.4%." },
+  { id: "index", name: "Nifty 50 index fund (for reference)", kind: "Mutual fund", rateTxt: "≈10% assumed",
+    rate: function () { return 0.10; }, tax: "equity", lock: 0, guaranteed: false, risky: true,
+    minYears: 5, minWhy: "Share-market money needs 5 years or more: a single bad year can take away more than this would earn", safety: "Share market risk", safe: 5,
+    rules: { lock: "None", exit: "Any time, money back in 2–3 days", paid: "Nothing paid out", tax: "Equity rules: 20% within 12 months, 12.5% after, ₹1.25 lakh a year tax-free",
+             limit: "None", tds: "None" },
+    about: "Shown so the ULIP below has a comparison: a ULIP's equity fund invests in much the same shares, without the insurance charges. 10% a year is a long-run assumption, not a promise: the index has fallen 30–50% in bad years, so it suits money you won't need for 7+ years." },
+  { id: "trad", name: "Guaranteed savings plan (non-linked insurance)", kind: "Life insurance", rateTxt: "≈5.25% guaranteed (IRR)",
+    rate: function () { return 0.0525; }, tax: "trad", lock: 10, guaranteed: true, safety: "Insurer's guarantee", safe: 3,
+    rules: { lock: "Policy term, usually 10–15 years", exit: "Surrender allowed after 1–2 years but pays back far less, often below what was paid in",
+             paid: "Lump sum at maturity, or a yearly income (varies by option)", tax: "Tax-free only if all such policies bought since 1 Apr 2023 total ₹5 lakh premium a year or less; otherwise the gain is taxed at your slab",
+             limit: "Insurer's minimum", tds: "On the taxable part, if taxable" },
+    about: "The return is fixed in the policy document (5–6% IRR depending on age, term and payout option). Usually paid as a yearly premium for 5–12 years, not one lump sum. Includes a small life cover." },
+  { id: "ulip", name: "ULIP (unit-linked insurance)", kind: "Life insurance", rateTxt: "≈8.5% assumed, after charges",
+    rate: function () { return 0.085; }, tax: "ulip", lock: 5, guaranteed: false, risky: true, safety: "Share market risk", safe: 5,
+    rules: { lock: "5 years", exit: "Before 5 years the money moves to a discontinuance fund (≈4%) and is paid out only at year 5",
+             paid: "Fund value at maturity", tax: "Tax-free only if all ULIPs bought since 1 Feb 2021 total ₹2.5 lakh premium a year or less, and the cover is at least 10× the premium; otherwise taxed like an equity fund",
+             limit: "Insurer's minimum", tds: "None" },
+    about: "The equity-fund return less fund charges (≈1.35%) and life-cover charges. Not guaranteed. Usually paid as a yearly premium; a single lump-sum ULIP normally has cover of only 1.25× the premium, which fails the 10× test and makes the gain taxable." }
+];
+
+function cmpLoad() {
+  if (STATE.cmp) return STATE.cmp;
+  var tx = DATA.exitTax || {}, saved = {};
+  try { saved = JSON.parse(localStorage.getItem("ft.cmp") || "{}") || {}; } catch (e) { saved = {}; }
+  STATE.cmp = { amt: saved.amt || 500000, yrs: saved.yrs || 5, slab: saved.slab != null ? saved.slab : (tx.slab != null ? tx.slab : 30),
+                allow: saved.allow != null ? saved.allow : true, open: {} };
+  return STATE.cmp;
+}
+function cmpSave() {
+  var c = STATE.cmp;
+  try { localStorage.setItem("ft.cmp", JSON.stringify({ amt: c.amt, yrs: c.yrs, slab: c.slab, allow: c.allow })); } catch (e) {}
+}
+
+/* Premiums already going into policies that count towards the tax-free
+   limits: ULIPs bought on or after 1 Feb 2021, other savings policies on or
+   after 1 Apr 2023. A policy still awaiting issue has no start date and counts. */
+function premiumsUsed() {
+  var u = 0, t = 0;
+  (DATA.insurance || []).forEach(function (p) {
+    var k = String(p.kind || ""), s = p.start || "9999";
+    if (/ulip/i.test(k) && s >= "2021-02-01") u += p.premium || 0;
+    else if (/life \((savings|guaranteed|endowment)/i.test(k) && s >= "2023-04-01") t += p.premium || 0;
+  });
+  return { ulip: u, trad: t };
+}
+
+function cmpRow(s, A, H, c, used) {
+  var t = c.slab / 100 * (1 + ((DATA.exitTax || {}).cess || 4) / 100);
+  var cess = 1 + ((DATA.exitTax || {}).cess || 4) / 100;
+  var r = { s: s, rateTxt: typeof s.rateTxt === "function" ? s.rateTxt(H) : s.rateTxt, fit: true, why: "", note: "" };
+  if (s.notYet) { r.fit = false; r.why = s.notYet; return r; }
+  if (s.minYears && H < s.minYears) { r.fit = false; r.why = s.minWhy; return r; }
+  if (H < s.lock) { r.fit = false; r.why = "Locked for " + (s.lock < 1 ? s.lock * 12 + " months" : s.lock + " years") + ", longer than your " + H + (H === 1 ? " year" : " years"); return r; }
+  var amt = s.cap ? Math.min(A, s.cap) : A;
+  if (s.cap && A > s.cap) r.note = "Only " + money(s.cap) + " can go in; the other " + money(A - s.cap) + " has to go elsewhere";
+  var e = s.rate(H), pen = s.penalty ? s.penalty(H) * amt : 0;
+  var pre = amt * Math.pow(1 + e, H) - pen, post, how;
+  var gain = pre - amt;
+  if (s.tax === "slab") {
+    post = amt * Math.pow(1 + e * (1 - t), H) - pen * (1 - t);
+    how = "Interest taxed at " + c.slab + "% + cess each year";
+  } else if (s.tax === "free") {
+    post = pre; how = "Tax-free";
+  } else if (s.tax === "trad" && used.trad + amt <= TRAD_PREMIUM_LIMIT) {
+    post = pre; how = "Tax-free: your policies would total " + money(used.trad + amt) + " a year, within ₹5 lakh";
+  } else if (s.tax === "trad") {
+    post = pre - Math.max(0, gain) * t;
+    how = "Taxable: with this your policies total " + money(used.trad + amt) + " a year, over ₹5 lakh, so the gain is taxed at your slab";
+  } else if (s.tax === "ulip" && used.ulip + amt <= ULIP_PREMIUM_LIMIT) {
+    post = pre; how = "Tax-free: your ULIPs would total " + money(used.ulip + amt) + " a year, within ₹2.5 lakh (and cover must be 10× premium)";
+  } else {           // equity funds, and ULIPs over the limit
+    var free = c.allow ? EQUITY_ALLOWANCE : 0;
+    post = pre - Math.max(0, gain - free) * EQUITY_LTCG / 100 * cess;
+    how = (s.tax === "ulip" ? "Taxed like an equity fund: your ULIPs would total " + money(used.ulip + amt) + " a year, over ₹2.5 lakh. " : "") +
+      "Sold after 12 months: 12.5% + cess on gains" + (c.allow ? " above ₹1.25 lakh" : " (₹1.25 lakh allowance already used)");
+  }
+  r.amt = amt; r.pre = pre; r.post = post; r.tax = pre - post; r.how = how;
+  r.cagr = Math.pow(post / amt, 1 / H) - 1;
+  r.preRate = Math.pow(pre / amt, 1 / H) - 1;
+  return r;
+}
+
+function pct1(x) { return (x * 100).toFixed(1) + "%"; }
+
+function renderInvest() {
+  var c = cmpLoad(), A = c.amt, H = c.yrs, used = premiumsUsed();
+  var rows = SCHEMES.map(function (s) { return cmpRow(s, A, H, c, used); });
+  var fit = rows.filter(function (r) { return r.fit; }).sort(function (a, b) { return b.cagr - a.cagr; });
+  var off = rows.filter(function (r) { return !r.fit; });
+  var asOf = new Date(RATES_AS_OF + "T00:00:00"), stale = (Date.now() - asOf) / 864e5 > 92;
+  var asOfLbl = dayLabel(RATES_AS_OF) + " " + RATES_AS_OF.slice(0, 4);
+  var tx = DATA.exitTax || {};
+
+  var amtBtns = [100000, 250000, 500000, 1000000, 1500000, 2500000].map(function (v) {
+    return '<button type="button" data-amt="' + v + '"' + (v === A ? ' aria-pressed="true"' : '') + '>' + moneyShort(v).replace("₹", "₹ ") + '</button>';
+  }).join("");
+  var yrOpts = [1, 2, 3, 5, 7, 10, 15].map(function (y) {
+    return '<option value="' + y + '"' + (y === H ? ' selected' : '') + '>' + y + (y === 1 ? ' year' : ' years') + '</option>';
+  }).join("");
+  var slabOpts = [30, 25, 20, 15, 10, 5, 0].map(function (v) {
+    return '<option value="' + v + '"' + (v === c.slab ? ' selected' : '') + '>' + v + '%' + (v === tx.slab ? ' (yours this year)' : '') + '</option>';
+  }).join("");
+
+  var html = '<div class="card"><h2>Where to invest</h2>' +
+    '<p class="cap">Enter an amount and how long it can stay invested. Every option is worked out the same way and ranked by ' +
+      'what you keep after tax. Rates checked on <b>' + asOfLbl + '</b>' +
+      (stale ? ' <span class="pill warn">over 3 months old: ask Claude to refresh the rates</span>' : '') + '.</p>' +
+    '<div class="filters inv-in">' +
+      '<div class="f"><label for="inv-amt">Amount to invest</label><input id="inv-amt" type="text" inputmode="numeric" value="' + inr0.format(A) + '"></div>' +
+      '<div class="f"><label for="inv-yrs">Can stay invested for</label><select id="inv-yrs">' + yrOpts + '</select></div>' +
+      '<div class="f"><label for="inv-slab">Your tax slab</label><select id="inv-slab">' + slabOpts + '</select></div>' +
+      '<div class="f"><label for="inv-allow">₹1.25L equity-gain allowance</label><select id="inv-allow">' +
+        '<option value="1"' + (c.allow ? ' selected' : '') + '>Not used yet</option><option value="0"' + (c.allow ? '' : ' selected') + '>Already used</option></select></div>' +
+    '</div><div class="inv-quick">' + amtBtns + '</div></div>';
+
+  // ---- summary boxes
+  function best(pred) { return fit.filter(pred)[0]; }
+  function box(lbl, r, extra) {
+    if (!r) return '<div class="exit-box"><div class="lbl">' + lbl + '</div><div class="v">—</div><div class="t">nothing fits ' + H + ' years</div></div>';
+    return '<div class="exit-box"><div class="lbl">' + lbl + '</div><div class="v">' + pct1(r.cagr) + ' a year</div>' +
+      '<div class="t">' + esc(r.s.name) + '</div><div class="why">' + money(r.amt) + ' → ' + money(r.post) + ' after tax' + (extra || '') + '</div></div>';
+  }
+  var sav = fit.filter(function (r) { return r.s.id === "sav"; })[0];
+  html += '<div class="grid k4" style="margin-bottom:16px">' +
+    box("Best guaranteed", best(function (r) { return r.s.guaranteed; })) +
+    box("Best you can take out any time", best(function (r) { return r.s.lock <= 0.5 && !r.s.risky; })) +
+    box("Best overall (not guaranteed)", best(function (r) { return !r.s.guaranteed; })) +
+    box("If it stays in savings", sav) + '</div>';
+
+  // ---- ranked table
+  var top = fit.length ? Math.max.apply(null, fit.map(function (r) { return r.cagr; })) : 1;
+  function pills(s) {
+    return (s.guaranteed ? '<span class="pill ok">Guaranteed</span>' : s.floating ? '<span class="pill">Rate resets</span>'
+      : s.risky ? '<span class="pill bad">Market-linked</span>' : '<span class="pill warn">Not guaranteed</span>') +
+      ' <span class="pill">' + esc(s.safety) + '</span>';
+  }
+  var body = fit.map(function (r, i) {
+    var s = r.s, open = !!c.open[s.id];
+    var detail = '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + s.id + '"><td colspan="7"><div class="inv-detail">' +
+      '<div class="tax-lines">' +
+        kv("Put in", Math.round(r.amt)) +
+        kv("Value after " + H + (H === 1 ? " year" : " years") + ", before tax", Math.round(r.pre)) +
+        kv("Tax", -Math.round(r.tax)) +
+        kv("What you keep", Math.round(r.post), "total") +
+        kvText("Gain after tax", money(r.post - r.amt) + " · " + pct1(r.cagr) + " a year", "note") +
+      '</div><p>' + esc(r.how) + '.</p>' + (r.note ? '<p><b>' + esc(r.note) + '.</b></p>' : '') +
+      '<p>' + esc(s.about) + '</p></div></td></tr>';
+    return '<tr class="tax-row" data-key="' + s.id + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
+      '<td><span class="chev">' + (open ? '▾' : '▸') + '</span> <b>' + (i + 1) + '. ' + esc(s.name) + '</b>' +
+        '<div class="inv-pills">' + pills(s) + '</div>' + (r.note ? '<div class="muted" style="font-size:12px;margin:4px 0 0 16px">' + esc(r.note) + '</div>' : '') + '</td>' +
+      '<td class="num">' + esc(r.rateTxt) + '</td>' +
+      '<td>' + esc(s.rules.lock) + '</td>' +
+      '<td class="num">' + money(r.pre) + '</td>' +
+      '<td class="num">' + money(r.tax) + '</td>' +
+      '<td class="num"><b>' + money(r.post) + '</b></td>' +
+      '<td class="num inv-barcell"><b>' + pct1(r.cagr) + '</b><div class="inv-bar"><span style="width:' +
+        Math.max(2, r.cagr / top * 100).toFixed(1) + '%"></span></div></td></tr>' + detail;
+  }).join("");
+  var offBody = off.map(function (r) {
+    return '<tr class="inv-off"><td>' + esc(r.s.name) + '</td><td class="num">' + esc(r.rateTxt) + '</td><td colspan="5">' + esc(r.why) + '</td></tr>';
+  }).join("");
+  html += '<div class="card"><h2>Ranked by what you keep · ' + money(A) + ' for ' + H + (H === 1 ? ' year' : ' years') + '</h2>' +
+    '<p class="cap">Tax at ' + c.slab + '% + ' + (tx.cess || 4) + '% cess under the new regime. Interest that is paid out is counted as if put back at the same rate, ' +
+      'so every option can be compared as "% a year". Tap a row for the workings.</p>' +
+    '<div class="tbl-scroll"><table class="inv-tbl"><thead><tr><th>Option</th><th class="num">Rate</th><th>Locked for</th>' +
+      '<th class="num">Value before tax</th><th class="num">Tax</th><th class="num">You keep</th><th class="num">After tax, a year</th></tr></thead>' +
+      '<tbody>' + body + (offBody ? '<tr><td colspan="7" class="inv-sep">Not a fit for ' + H + (H === 1 ? ' year' : ' years') + '</td></tr>' + offBody : '') +
+    '</tbody></table></div></div>';
+
+  // ---- rules side by side
+  html += '<div class="card"><h2>The rules, side by side</h2>' +
+    '<p class="cap">Lock-in, early exit, tax and limits for each option. Your insurance policies already use ' + money(used.ulip) +
+      ' of the ₹2.5 lakh yearly ULIP limit and ' + money(used.trad) + ' of the ₹5 lakh limit for other savings policies.</p>' +
+    '<div class="tbl-scroll"><table class="inv-rules"><thead><tr><th>Option</th><th>Lock-in</th><th>Taking money out early</th><th>Tax</th>' +
+      '<th>Interest paid</th><th>Limit</th><th>TDS</th><th>Safety</th></tr></thead><tbody>' +
+    SCHEMES.map(function (s) {
+      var R = s.rules;
+      return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(R.lock) + '</td><td>' + esc(R.exit) + '</td><td>' + esc(R.tax) + '</td>' +
+        '<td>' + esc(R.paid) + '</td><td>' + esc(R.limit) + '</td><td>' + esc(R.tds) + '</td><td>' + esc(s.safety) + '</td></tr>';
+    }).join("") + '</tbody></table></div></div>';
+
+  html += '<div class="card"><h2>Before you decide</h2><ul class="inv-notes">' +
+    '<li>Guaranteed rates are fixed on the day you invest. Post Office rates are reset each quarter (unchanged for Oct–Dec 2026), the RBI bond every six months.</li>' +
+    '<li>Fund and ULIP figures are assumptions, not promises: arbitrage funds have run between about 5.5% and 7.5%; share-market funds can fall sharply in a bad year.</li>' +
+    '<li>Tax law: the Income-tax Act 2025 applies from 1 April 2026, with the same rates and limits as before (sections renumbered).</li>' +
+    '<li>Rates from: India Post / Ministry of Finance (Oct–Dec 2026), HDFC Bank FD card, RBI (FRSB 8.05% to Dec 2026), REC/PFC/IRFC 54EC (5.25%), Bajaj Finance and Shriram Finance, Value Research (arbitrage category), insurer illustrations.</li>' +
+    '<li>This is a comparison to help you think, not investment advice. It was prepared with an AI assistant, not a licensed financial adviser.</li></ul></div>';
+
+  var box0 = el("tab-invest");
+  box0.innerHTML = html;
+
+  function redraw() { cmpSave(); var y = window.scrollY; renderInvest(); window.scrollTo(0, y); }
+  var amtIn = el("inv-amt");
+  amtIn.addEventListener("change", function () {
+    var v = parseInt(String(amtIn.value).replace(/[^0-9]/g, ""), 10);
+    if (v > 0) { c.amt = v; redraw(); } else amtIn.value = inr0.format(c.amt);
+  });
+  amtIn.addEventListener("keydown", function (e) { if (e.key === "Enter") amtIn.blur(); });
+  box0.querySelectorAll("[data-amt]").forEach(function (b) {
+    b.addEventListener("click", function () { c.amt = +b.getAttribute("data-amt"); redraw(); });
+  });
+  el("inv-yrs").addEventListener("change", function () { c.yrs = +this.value; redraw(); });
+  el("inv-slab").addEventListener("change", function () { c.slab = +this.value; redraw(); });
+  el("inv-allow").addEventListener("change", function () { c.allow = this.value === "1"; redraw(); });
+  box0.querySelectorAll("tr.tax-row").forEach(function (tr) {
+    function go() {
+      var k = tr.getAttribute("data-key"), open = !c.open[k];
+      c.open[k] = open;
+      tr.setAttribute("aria-expanded", String(open));
+      tr.querySelector(".chev").textContent = open ? "▾" : "▸";
+      box0.querySelector('tr.tax-detail[data-for="' + k + '"]').hidden = !open;
+    }
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+}
+
 /* Money fronted for Amma and repaid over the following months. Both legs are
    tagged Transfer / Amma Receivable in the spreadsheet and excluded from the
    charts, so they appear nowhere else in this app -- which is exactly why this
@@ -3219,7 +3554,7 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma"].forEach(function (t) {
+  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "invest", "bills", "insurance", "amma"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
@@ -3231,6 +3566,7 @@ function switchTab(name) {
   if (name === "salary")    renderSalary();
   if (name === "tax")       renderTax();
   if (name === "amma")      renderAmma();
+  if (name === "invest")    renderInvest();
   window.scrollTo(0, 0);
 }
 
