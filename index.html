@@ -392,10 +392,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
       <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
-      <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
       <button role="tab" data-tab="bills"     aria-selected="false">Upcoming Bills</button>
+      <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
     </nav>
   </header>
   <main>
@@ -404,12 +404,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-accounts" class="hide"></section>
     <section id="tab-assets"   class="hide"></section>
-    <section id="tab-invest"   class="hide"></section>
     <section id="tab-bills"     class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
     <section id="tab-tax"       class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
+    <section id="tab-invest"   class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
 </div>
@@ -424,7 +424,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v39";
+var APP_BUILD = "finances-shell-v40";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3275,6 +3275,22 @@ var SCHEMES = [
     rules: { lock: "None", exit: "Money back in 1–2 working days; ≈0.25% exit load in the first 15–30 days", paid: "Nothing paid out; units grow",
              tax: "Equity rules: 20% if sold within 12 months, 12.5% after, with ₹1.25 lakh of equity gains tax-free each year", limit: "None", tds: "None" },
     about: "Buys shares and sells futures on the same shares; the locked-in price gap is the return. Not guaranteed: quiet markets bring stretches near 5.5%. The 6.4% allows for the higher futures tax (STT) from April 2026. Choose a large fund, Direct plan, expense ratio under 0.4%." },
+  { id: "liquid", name: "Liquid fund (debt mutual fund)", kind: "Mutual fund", rateTxt: "≈6.6% expected",
+    rate: function () { return 0.066; }, tax: "slabExit", lock: 0, guaranteed: false, safety: "Very low risk (91-day paper)", safe: 2,
+    rules: { lock: "None", exit: "Money back next working day; a tiny exit load only in the first 7 days", paid: "Nothing paid out; units grow",
+             tax: "Gain taxed at your slab when you sell, however long you held (no long-term benefit since April 2023)", limit: "None", tds: "None" },
+    about: "Holds treasury bills and bank/company paper maturing within 91 days, so its value barely moves. Unlike an FD, tax is due only when you sell, so the money compounds untaxed until then. Good for parking money you may need soon." },
+  { id: "debt", name: "Corporate bond / short duration fund (debt)", kind: "Mutual fund", rateTxt: "≈7.0% expected",
+    rate: function () { return 0.07; }, tax: "slabExit", lock: 0, guaranteed: false, safety: "Low risk, AA+ and above bonds", safe: 3,
+    rules: { lock: "None", exit: "Money back in 1–2 working days; most charge no exit load", paid: "Nothing paid out; units grow",
+             tax: "Gain taxed at your slab when you sell, however long you held (no long-term benefit since April 2023)", limit: "None", tds: "None" },
+    about: "Holds high-rated company and government bonds of 1–4 years. Returns are not fixed: when interest rates rise the value can dip for a few months, so it suits money left for 2 years or more. The edge over an FD is that tax is paid once, at the end, not every year. Choose a large fund on a Direct plan." },
+  { id: "sgb", name: "Sovereign Gold Bond (bought on the exchange)", kind: "Government bond", rateTxt: "≈8% gold assumed + 2.5% on issue price",
+    rate: function () { return 0.08; }, interest: 0.008, tax: "gold", lock: 0, guaranteed: false, risky: true, safety: "Government of India, gold price risk", safe: 4,
+    minYears: 3, minWhy: "Gold can go sideways or fall for several years at a time; 3 years or more is the sensible minimum",
+    rules: { lock: "None (sell on the exchange)", exit: "Sell on NSE/BSE any time, often a little below the gold price (few buyers); RBI buys back only from 5 years after issue",
+             paid: "2.5% a year on the original issue price, every 6 months", tax: "Interest at your slab; gain 12.5% + cess after 12 months. Since 1 Apr 2026 the tax-free maturity applies only to the original buyer, so bonds bought on the exchange are taxed", limit: "4 kg a year", tds: "None" },
+    about: "The government stopped selling new Sovereign Gold Bonds in February 2024; older series still trade on the stock exchange through a demat account. You earn the gold price plus 2.5% a year on the issue price, which is far below today's price, so the interest is worth only about 0.8% a year on what you pay. Gold has averaged roughly 8–10% a year over long periods but with long flat spells; the 8% is an assumption. A gold ETF or gold fund is the easier alternative (no interest, same tax)." },
   { id: "index", name: "Nifty 50 index fund (for reference)", kind: "Mutual fund", rateTxt: "≈10% assumed",
     rate: function () { return 0.10; }, tax: "equity", lock: 0, guaranteed: false, risky: true,
     minYears: 5, minWhy: "Share-market money needs 5 years or more: a single bad year can take away more than this would earn", safety: "Share market risk", safe: 5,
@@ -3336,6 +3352,14 @@ function cmpRow(s, A, H, c, used) {
   if (s.tax === "slab") {
     post = amt * Math.pow(1 + e * (1 - t), H) - pen * (1 - t);
     how = "Interest taxed at " + c.slab + "% + cess each year";
+  } else if (s.tax === "slabExit") {              // debt funds: whole gain taxed at the slab, once, on sale
+    post = pre - Math.max(0, gain) * t;
+    how = "Whole gain taxed at " + c.slab + "% + cess when you sell";
+  } else if (s.tax === "gold") {                  // gold price gain at 12.5% on sale; the small interest at the slab yearly
+    var gGain = amt * Math.pow(1 + e, H) - amt, iPre = amt * (Math.pow(1 + s.interest, H) - 1);
+    pre = amt + gGain + iPre; gain = pre - amt;
+    post = amt + gGain * (1 - EQUITY_LTCG / 100 * cess) + amt * (Math.pow(1 + s.interest * (1 - t), H) - 1);
+    how = "Gold gain taxed at 12.5% + cess when sold (no ₹1.25 lakh allowance: that is for shares and equity funds only); the interest at " + c.slab + "% + cess each year";
   } else if (s.tax === "free") {
     post = pre; how = "Tax-free";
   } else if (s.tax === "trad" && used.trad + amt <= TRAD_PREMIUM_LIMIT) {
@@ -3458,9 +3482,9 @@ function renderInvest() {
 
   html += '<div class="card"><h2>Before you decide</h2><ul class="inv-notes">' +
     '<li>Guaranteed rates are fixed on the day you invest. Post Office rates are reset each quarter (unchanged for Oct–Dec 2026), the RBI bond every six months.</li>' +
-    '<li>Fund and ULIP figures are assumptions, not promises: arbitrage funds have run between about 5.5% and 7.5%; share-market funds can fall sharply in a bad year.</li>' +
+    '<li>Fund, gold and ULIP figures are assumptions, not promises: arbitrage funds have run between about 5.5% and 7.5%; debt funds can dip for a few months when interest rates rise; gold and share-market funds can fall sharply in a bad year.</li>' +
     '<li>Tax law: the Income-tax Act 2025 applies from 1 April 2026, with the same rates and limits as before (sections renumbered).</li>' +
-    '<li>Rates from: India Post / Ministry of Finance (Oct–Dec 2026), HDFC Bank FD card, RBI (FRSB 8.05% to Dec 2026), REC/PFC/IRFC 54EC (5.25%), Bajaj Finance and Shriram Finance, Value Research (arbitrage category), insurer illustrations.</li>' +
+    '<li>Rates from: India Post / Ministry of Finance (Oct–Dec 2026), HDFC Bank FD card, RBI (FRSB 8.05% to Dec 2026), REC/PFC/IRFC 54EC (5.25%), Bajaj Finance and Shriram Finance, Value Research (arbitrage, liquid and corporate bond categories), Budget 2026 SGB tax change, insurer illustrations.</li>' +
     '<li>This is a comparison to help you think, not investment advice. It was prepared with an AI assistant, not a licensed financial adviser.</li></ul></div>';
 
   var box0 = el("tab-invest");
@@ -3554,7 +3578,7 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "invest", "bills", "insurance", "amma"].forEach(function (t) {
+  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma", "invest"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
