@@ -149,7 +149,7 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
    own content: a card holding a wide table then pushed the whole page sideways
    on a phone instead of letting the table scroll inside its own box. */
 .grid > * { min-width: 0; }
-@media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } }
+@media (min-width: 700px)  { .grid.k2 { grid-template-columns: 1fr 1fr; } .grid.k4 { grid-template-columns: repeat(4,1fr); } .grid.k3 { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 699px)  { .grid.k4, .grid.k5, .grid.k6 { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 700px) and (max-width: 1039px) { .grid.k6 { grid-template-columns: repeat(3,1fr); } }
 @media (min-width: 1040px) { .grid.k6 { grid-template-columns: repeat(6,1fr); } }
@@ -172,6 +172,11 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 }
 
 /* ---------------------------------------------- exit values (Assets tab) */
+.tax-row { cursor: pointer; }
+.tax-row:hover td { background: var(--plane); }
+.tax-row .chev { display: inline-block; width: 12px; color: var(--muted); }
+.tax-detail td { background: var(--plane); }
+.tax-lines { max-width: 460px; margin: 0 0 4px 16px; }
 .exit { border-top: 1px solid var(--grid); padding: 14px 0; }
 .exit:first-of-type { border-top: none; }
 .exit-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; }
@@ -210,11 +215,11 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .tile .val { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -0.025em; margin-top: 6px; line-height: 1.1; }
 .tile .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 5px; }
 /* a tile laid out as a small statement: one item per line, amount on the right */
-.tile .kv, .exit-box .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+.tile .kv, .exit-box .kv, .tax-lines .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
             color: var(--text-secondary); margin-top: 5px; font-variant-numeric: tabular-nums; }
-.tile .kv b, .exit-box .kv b { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
-.tile .kv.total, .exit-box .kv.total { border-top: 1px solid var(--grid); padding-top: 6px; margin-top: 7px; color: var(--text-primary); font-weight: 600; }
-.tile .kv.note, .exit-box .kv.note { color: var(--muted); font-size: 12px; }
+.tile .kv b, .exit-box .kv b, .tax-lines .kv b { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.tile .kv.total, .exit-box .kv.total, .tax-lines .kv.total { border-top: 1px solid var(--grid); padding-top: 6px; margin-top: 7px; color: var(--text-primary); font-weight: 600; }
+.tile .kv.note, .exit-box .kv.note, .tax-lines .kv.note { color: var(--muted); font-size: 12px; }
 /* a tile that filters the list below it (Insurance, Upcoming Bills) */
 .tile.click { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
               transition: border-color .15s, box-shadow .15s; }
@@ -386,7 +391,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v36";
+var APP_BUILD = "finances-shell-v37";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -932,7 +937,7 @@ function chartNet(container, keys, map, fit) {
    5. Views
    ===================================================================== */
 
-var STATE = { tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -1047,15 +1052,21 @@ function taxOverviewCard() {
     var pend = r.tax - r.taken;
     tTax += r.tax; tTaken += r.taken; tPend += pend;
     if (r.pendingBy === "you") mine += Math.max(0, pend);
-    return '<tr><td>' + esc(r.label) + '<div class="muted" style="font-size:12px">' + esc(r.note) + '</div></td>' +
+    var open = !!STATE.ovTaxOpen[r.key];
+    var detail = '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + r.key + '"><td colspan="5">' +
+      '<div class="tax-lines">' + (r.lines || []).map(function (l) { return kv(esc(l[0]), Math.round(l[1]), l[2]); }).join('') +
+      '</div></td></tr>';
+    return '<tr class="tax-row" data-key="' + r.key + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
+      '<td><span class="chev">' + (open ? '▾' : '▸') + '</span> ' + esc(r.label) + '<div class="muted" style="font-size:12px;margin-left:16px">' + esc(r.note) + '</div></td>' +
       '<td class="num">' + money(r.tax) + '</td><td class="num">' + money(r.taken) + '</td>' +
       '<td class="num"><b>' + money(pend) + '</b><div class="muted" style="font-size:12px">' +
         (r.pendingBy === "you" ? 'you pay' : 'employer deducts') + '</div></td>' +
-      '<td class="num">' + money(Math.max(0, pend) / m.monthsLeft) + '</td></tr>';
+      '<td class="num">' + money(Math.max(0, pend) / m.monthsLeft) + '</td></tr>' + detail;
   }).join("");
   return '<div class="card"><h2>Tax · ' + m.fyName + '</h2>' +
     '<p class="cap">Estimated under the new regime. <b>' + money(mine) + '</b> of the pending tax is yours to pay ' +
       '(about ' + money(mine / m.monthsLeft) + ' a month, ' + m.spanLbl + '); the rest your employer deducts from salary. ' +
+      'Tap a row to see how it is worked out. ' +
       '<button class="linkish" id="ov-taxlink" style="padding:0">Full workings on Tax Planning →</button></p>' +
     '<div class="tbl-scroll"><table><thead><tr><th>Source</th><th class="num">Tax for the year</th>' +
       '<th class="num">Taken so far</th><th class="num">Pending</th><th class="num">Per month · ' + esc(m.spanLbl) + '</th></tr></thead><tbody>' +
@@ -1173,16 +1184,37 @@ function yearTaxCard(compact) {         // compact: title and the four boxes onl
     var fdAmt = fdInterest, sbAmt = sbSoFar + sbProj, otherAmt = Math.max(0, interest - fdAmt - sbAmt);
     var paidOutNames = (DATA.exitValues || []).filter(function (x) { return x.yearlyInterest > 0; })
                                               .map(function (x) { return x.name; });
+    // the breakup each Overview row opens into: [label, amount, class]
+    var salTaxable = Math.round(Math.max(0, salGross - std)), st = taxFor(salTaxable);
+    var rate = interest > 0 ? Math.round(interestTax / interest * 1000) / 10 : 0;
+    var rateLine = 'Tax at ' + rate + '% (your top slab + cess)';
+    var intLines = function (amtLines, amt, taken, takenLbl) {
+      var t = share(amt);
+      return amtLines.concat([[rateLine, t], ['Tax for the year', t, 'total'],
+        [takenLbl, -taken], ['Pending, you pay', t - taken, 'total']]);
+    };
+    var fdPaid = Math.max(0, fdAmt - fdRest);
     return { fyName: fyName, monthsLeft: monthsLeft, spanLbl: spanLbl, total: total,
       rows: [
         { key: "salary", label: "Salary", income: salGross, tax: salaryTax, taken: salSoFar,
-          pendingBy: "employer", note: "deducted by your employer each month" },
+          pendingBy: "employer", note: "deducted by your employer each month",
+          lines: [['Salary for the year', salGross], ['Less standard deduction', -std], ['Taxable salary', salTaxable, 'total'],
+            ['Tax on the slabs', st.slabTax]].concat(st.rebate > 0 ? [['Less 87A rebate', -st.rebate]] : [])
+            .concat(st.surcharge > 0 ? [['Plus ' + st.surRate + '% surcharge', st.surcharge]] : [])
+            .concat([['Plus ' + (rg.cess || 0) + '% cess', st.cess], ['Tax for the year', salaryTax, 'total'],
+              ['Deducted so far (' + slips.length + ' payslips)', -salSoFar], ['Pending', salaryTax - salSoFar, 'total'],
+              ['Employer will deduct, at the current rate', salYear - salSoFar, 'note']]) },
         { key: "fd", label: "Fixed deposit interest", income: fdAmt, tax: share(fdAmt), taken: bankTds,
-          pendingBy: "you", note: "bank TDS estimated" },
+          pendingBy: "you", note: "bank TDS estimated",
+          lines: intLines([['Interest paid so far', fdPaid], ['Interest still accruing', fdRest], ['Interest for the year', fdAmt, 'total']],
+                          fdAmt, bankTds, 'Less bank TDS (estimate)') },
         { key: "other", label: (paidOutNames.length ? paidOutNames.join(", ") : "Other") + " interest", income: otherAmt,
-          tax: share(otherAmt), taken: 0, pendingBy: "you", note: "no TDS" },
+          tax: share(otherAmt), taken: 0, pendingBy: "you", note: "no TDS",
+          lines: intLines([['Interest for the year', otherAmt, 'total']], otherAmt, 0, 'No TDS deducted') },
         { key: "sb", label: "Savings account interest", income: sbAmt, tax: share(sbAmt), taken: 0,
-          pendingBy: "you", note: "no TDS" }
+          pendingBy: "you", note: "no TDS",
+          lines: intLines([['Credited so far', sbSoFar], ['Still to come (estimate)', sbProj], ['Interest for the year', sbAmt, 'total']],
+                          sbAmt, 0, 'No TDS deducted') }
       ] };
   }
 
@@ -1342,6 +1374,18 @@ function renderOverview() {
   host.innerHTML = html;
   var taxLink = el("ov-taxlink");
   if (taxLink) taxLink.addEventListener("click", function () { switchTab("tax"); });
+  // tax rows open into their breakup in place; remembered while the app is open
+  host.querySelectorAll(".tax-row").forEach(function (tr) {
+    function toggle() {
+      var key = tr.getAttribute("data-key"), open = !STATE.ovTaxOpen[key];
+      STATE.ovTaxOpen[key] = open;
+      host.querySelector('.tax-detail[data-for="' + key + '"]').hidden = !open;
+      tr.setAttribute("aria-expanded", open);
+      tr.querySelector(".chev").textContent = open ? "▾" : "▸";
+    }
+    tr.addEventListener("click", toggle);
+    tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  });
   chartIncomeExpense(el("c-ie"), last12, map, STATE.fitScale);
   chartCategories(el("c-cat"), cats, catTotal, function (cat) {
     STATE.spendCat = cat; STATE.spendScope = "month"; switchTab("spending");
@@ -1922,15 +1966,38 @@ function renderAssets() {
       '<div class="why">' + esc(why) + '</div></div>';
   }
   var short = function (x) { return esc(x.name.split(" - ")[0].split(" (")[0]); };
+  function monYear(d) {                                  // "20 Sep 2027" -> "Sep-2027"
+    var m = /(\d{1,2}) ([A-Za-z]{3})[a-z]* (\d{4})/.exec(d || "");
+    return m ? m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase() + '-' + m[3] : (d || '—');
+  }
+  var matKnown = exits.filter(function (x) { return x.maturity !== null && x.maturity !== undefined; });
+  var matTotal = matKnown.reduce(function (t, x) { return t + x.maturity; }, 0);
+  var sideBySide = '<div class="tbl-scroll" style="margin-bottom:12px"><table><thead><tr><th>Holding</th><th>Matures</th>' +
+      '<th class="num">If cashed in today</th><th class="num">At maturity</th><th class="num">Gain by waiting</th></tr></thead><tbody>' +
+    exits.map(function (x) {
+      var t = x.today !== null && x.today !== undefined, mk = x.maturity !== null && x.maturity !== undefined;
+      return '<tr><td>' + short(x) + '<div class="muted" style="font-size:12px">' + esc(x.kind) + '</div></td>' +
+        '<td>' + esc(monYear(x.matures)) + '</td>' +
+        '<td class="num">' + (t ? money(x.today) : '<span class="muted">' + esc(x.todayNote || 'locked') + '</span>') + '</td>' +
+        '<td class="num">' + (mk ? money(x.maturity) : '<span class="muted">' + esc(x.maturityNote || 'not known') + '</span>') + '</td>' +
+        '<td class="num">' + (t && mk ? money(x.maturity - x.today) : '<span class="muted">—</span>') + '</td></tr>';
+    }).join('') +
+    '<tr><td><b>Total</b></td><td></td><td class="num"><b>' + money(nowTotal) + '</b></td>' +
+      '<td class="num"><b>' + money(matTotal) + '</b></td><td></td></tr>' +
+    '</tbody></table></div>' +
+    '<p class="cap" style="margin-top:-4px">"At maturity" is the amount paid out on that date; the 54EC bonds\' yearly interest is paid ' +
+      'before then and is not in it. Each total adds only the amounts in its own column, so the two cover different holdings.</p>';
+
   var cashable = exits.filter(function (x) { return x.today !== null && x.today !== undefined; });
   var matTaxable = exits.reduce(function (t, x) { return t + (x.maturityTaxable || 0); }, 0);
   var beforeTaxable = exits.reduce(function (t, x) { return t + (x.beforeTaxable || 0); }, 0);
   var exitHtml = exits.map(function (x) {
     return '<div class="exit"><div class="exit-head"><b>' + esc(x.name) + '</b>' +
-        '<span class="muted" style="font-size:12.5px">' + esc(x.kind) + ' · book value ' + money(x.book) + '</span></div>' +
+        '<span class="muted" style="font-size:12.5px">' + esc(x.kind) + ' · book value ' + money(x.book) +
+          ' · matures ' + esc(monYear(x.matures)) + '</span></div>' +
       '<div class="exit-pair">' +
         exitBox("If cashed in today", x.today, x.todayNote, x.todayTaxable, x.todayWhy, "") +
-        exitBox("At maturity", x.maturity, x.maturityNote, x.maturityTaxable, x.maturityWhy, x.matures,
+        exitBox("At maturity", x.maturity, x.maturityNote, x.maturityTaxable, x.maturityWhy, monYear(x.matures),
                 x.beforeTaxable) +
       '</div>' +
       '<div class="tax"><b>Tax:</b> ' + esc(x.tax) + '</div></div>';
@@ -1957,14 +2024,12 @@ function renderAssets() {
           'maturity, with the part that counts as taxable income. Estimates to plan with, not tax advice.' +
           (exits[0].asOf ? ' Worked out on ' + esc(exits[0].asOf.split("-").reverse().join("/")) +
             '; fixed deposits are recalculated each day.' : '') + '</p>' +
-          '<div class="grid k4" style="margin-bottom:6px">' +
-            '<div class="exit-box"><div class="lbl">You could get today</div><div class="v">' + money(nowTotal) + '</div>' +
-              cashable.map(function (x) { return kv(short(x), x.today); }).join('') +
-              kv('Total', nowTotal, 'total') +
-              kv('of which taxable income', nowTax, 'note') + '</div>' +
+          sideBySide +
+          '<div class="grid k3" style="margin-bottom:6px">' +
             (taxMult !== null
               ? '<div class="exit-box"><div class="lbl">Tax if cashed in today</div><div class="v">' + money(nowTaxDue) + '</div>' +
-                  kv('Taxable income', nowTax) +
+                  kv('You could get today', nowTotal) +
+                  kv('of which taxable income', nowTax, 'note') +
                   kvText('Tax rate', esc(taxLbl)) +
                   kv('Tax', nowTaxDue, 'total') +
                   kv('In hand after tax', nowTotal - nowTaxDue) + '</div>'
