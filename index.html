@@ -2538,6 +2538,54 @@ function chartBonus(container, payouts, styles) {
   attachTip(wrap, wrap.querySelector("svg"));
 }
 
+/* CTC per year from the employer's compensation letters (DATA.salaryCTC).
+   Each row: the CTC from that date, its rise on the one before, and the
+   performance bonus paid with that revision, measured against the CTC in force
+   during the year it rewards (the row above). A thin bar shows the CTC's size. */
+function ctcCard(styles, meta) {
+  var rows = DATA.salaryCTC || [];
+  if (!rows.length) return "";
+  var max = Math.max.apply(null, rows.map(function (r) { return r.ctc; }));
+  var first = rows[0], last = rows[rows.length - 1];
+  var body = rows.map(function (r, i) {
+    var prev = i > 0 && rows[i - 1].company === r.company ? rows[i - 1] : null;
+    var st = employerStyle(r.company, styles, meta);
+    return '<tr><td style="white-space:nowrap">' + esc(r.from) +
+        '<div class="muted" style="font-size:12px">' + esc(st.short) + '</div></td>' +
+      '<td class="num"><b>' + money(r.ctc) + '</b><div class="muted" style="font-size:12px">' +
+        money(r.ctc / 12) + ' a month</div>' +
+        '<div style="height:6px;border-radius:3px;margin-top:6px;background:' + st.colour + ';width:' +
+          Math.round(r.ctc / max * 100) + '%;margin-left:auto"></div></td>' +
+      '<td class="num">' + (prev ? '<b>' + pctLabel(r.ctc / prev.ctc - 1) + '</b><div class="muted" style="font-size:12px">+' +
+          money(r.ctc - prev.ctc) + '</div>' : '<span class="muted">joining</span>') + '</td>' +
+      '<td class="num">' + (r.bonus ? money(r.bonus) + '<div class="muted" style="font-size:12px">' + esc(r.bonusPeriod) + '</div>'
+          : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (r.bonus && prev ? (r.bonus / prev.ctc * 100).toFixed(1) + '%' : '<span class="muted">—</span>') + '</td></tr>';
+  }).join("");
+  var years = Math.max(1, rows.length - 1);
+  var cagr = Math.pow(last.ctc / first.ctc, 1 / years) - 1;
+  return '<div class="card"><h2>CTC history</h2>' +
+    '<p class="cap">Annual cost to company from each year\'s compensation letter. CTC is more than the gross on a ' +
+      'payslip: it also counts the employer\'s PF and other costs. The bonus is the performance bonus paid with ' +
+      'that revision, shown as a share of the CTC in force during the year it rewards.</p>' +
+    '<div class="grid k4" style="margin-bottom:12px">' +
+      '<div class="exit-box"><div class="lbl">CTC now</div><div class="v">' + money(last.ctc) + '</div>' +
+        '<div class="t">from ' + esc(last.from) + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Previous CTC</div><div class="v">' +
+        (rows.length > 1 ? money(rows[rows.length - 2].ctc) : '—') + '</div>' +
+        '<div class="t">' + (rows.length > 1 ? 'from ' + esc(rows[rows.length - 2].from) : '') + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Latest rise</div><div class="v">' +
+        (rows.length > 1 ? pctLabel(last.ctc / rows[rows.length - 2].ctc - 1) : '—') + '</div>' +
+        '<div class="t">' + (rows.length > 1 ? '+' + money(last.ctc - rows[rows.length - 2].ctc) + ' a year' : '') + '</div></div>' +
+      '<div class="exit-box"><div class="lbl">Growth since ' + esc(first.from) + '</div><div class="v">' +
+        pctLabel(last.ctc / first.ctc - 1) + '</div>' +
+        '<div class="t">about ' + (cagr * 100).toFixed(1) + '% a year</div></div>' +
+    '</div>' +
+    '<div class="tbl-scroll"><table><thead><tr><th>From</th><th class="num">Annual CTC</th><th class="num">Rise</th>' +
+      '<th class="num">Performance bonus</th><th class="num">Bonus % of CTC</th></tr></thead><tbody>' + body +
+    '</tbody></table></div></div>';
+}
+
 function renderSalary() {
   var slips = (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
   var box = el("tab-salary");
@@ -2673,6 +2721,8 @@ function renderSalary() {
       '<p class="cap" style="margin:12px 0 0">First and last years at a firm are part-years.' +
         (notes.rise ? ' ' + esc(notes.rise) : '') + '</p>' +
     '</div>' +
+
+    ctcCard(styles, meta) +
 
     '<div class="card"><h2>Bonuses</h2>' +
       '<p class="cap">Bonus lines on the payslips, one bar per payout.' +
