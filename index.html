@@ -2778,7 +2778,6 @@ function renderSalary() {
   var payouts = slips.filter(function (p) { return p.bonus > 0; }).concat(extra)
     .sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
   var oneOffs = slips.filter(function (p) { return p.oneOff > 0; });
-  var bonusTotal = sum(payouts, "bonus");
   var cur = groups[groups.length - 1];
 
   var empRows = groups.map(function (g) {
@@ -2834,15 +2833,38 @@ function renderSalary() {
       '<td class="desc">' + esc(p.oneOffNotes || "") + '</td><td class="num">' + money(p.oneOff) + '</td></tr>';
   }).join("");
 
+  /* Salary and bonus kept apart. A bonus is taxed at the top marginal rate
+     (the workbook's slab + cess -- Sep 2026: 3,07,912 x 31.2% = 96,069, exactly
+     the extra TDS that month); without that rate, the previous ordinary month's
+     tax stands in for the salary part. The salary part keeps PF and the rest. */
+  var tx0 = DATA.exitTax, marg = tx0 ? tx0.slab / 100 * (1 + tx0.cess / 100) : null;
+  function bonusTaxOf(p) {
+    if (!p.bonus) return 0;
+    if (marg !== null) return Math.round(p.bonus * marg);
+    var before = slips.filter(function (q) { return q.m < p.m && !q.bonus && q.company === p.company; }).pop();
+    return before ? Math.max(0, p.tax - before.tax) : 0;
+  }
+  var lastBonusTax = bonusTaxOf(last);
+  var salGrossNow = last.gross - (last.bonus || 0) - (last.oneOff || 0);
+  var salTaxNow = last.tax - lastBonusTax;
+  var salNetNow = last.net - ((last.bonus || 0) - lastBonusTax) - (last.oneOff || 0);
+  // the latest bonus, wherever it was paid (on a payslip or separately)
+  var lastPay = payouts[payouts.length - 1];
+  var lpTax = lastPay ? (lastPay.extra ? (marg !== null ? Math.round(lastPay.bonus * marg) : null) : bonusTaxOf(lastPay)) : null;
+
   box.innerHTML =
     '<div class="grid k4" style="margin-bottom:16px">' +
       '<div class="tile"><div class="lbl">Regular pay now</div><div class="val">' + money(last.regular) + '</div>' +
         '<div class="sub">a month, gross · ' + esc(styles[last.company].short) + ', ' + monthLabel(last.m) + '</div></div>' +
-      '<div class="tile"><div class="lbl">Take-home now</div><div class="val">' + money(last.net) + '</div>' +
-        '<div class="sub">after ' + money(last.ded) + ' deductions' +
-          (last.bonus ? ' · includes ' + money(last.bonus) + ' bonus' : '') + '</div></div>' +
-      '<div class="tile"><div class="lbl">Bonuses received</div><div class="val">' + money(bonusTotal) + '</div>' +
-        '<div class="sub">' + payouts.length + ' payouts since ' + (payouts.length ? payouts[0].m.slice(0, 4) : "—") + '</div></div>' +
+      '<div class="tile"><div class="lbl">Salary take-home · ' + monthLabel(last.m) + '</div><div class="val">' + money(salNetNow) + '</div>' +
+        '<div class="sub">gross ' + money(salGrossNow) + ' · tax ' + money(salTaxNow) +
+          (last.ded - last.tax ? ' · PF etc. ' + money(last.ded - last.tax) : '') + '<br>deposited in the bank</div></div>' +
+      (lastPay
+        ? '<div class="tile"><div class="lbl">Latest bonus · ' + esc(lastPay.label || monthLabel(lastPay.m)) + '</div>' +
+            '<div class="val">' + (lpTax !== null ? money(lastPay.bonus - lpTax) : money(lastPay.bonus)) + '</div>' +
+            '<div class="sub">bonus ' + money(lastPay.bonus) + (lpTax !== null ? ' · tax ' + money(lpTax) : '') +
+              '<br>deposited in the bank</div></div>'
+        : '<div class="tile"><div class="lbl">Latest bonus</div><div class="val">—</div><div class="sub">none on record</div></div>') +
       '<div class="tile"><div class="lbl">Growth since ' + first.m.slice(0, 4) + '</div><div class="val">' +
         (last.regular / first.regular).toFixed(1) + '×</div>' +
         '<div class="sub">regular pay ' + moneyShort(first.regular) + ' → ' + moneyShort(last.regular) + ' a month</div></div>' +
