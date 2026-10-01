@@ -1095,7 +1095,7 @@ function fdInterestTaxCard() {
                 now (taxed as it accrues), less anything those FDs already paid.
    Without the regime rules (an older data.json) it falls back to tax on
    interest at the marginal rate. */
-function yearTaxCard() {
+function yearTaxCard(compact) {         // compact: title and the four boxes only (Overview)
   var tx = DATA.exitTax;
   if (!tx) return "";
   var rg = tx.regime;
@@ -1194,10 +1194,12 @@ function yearTaxCard() {
       })(money(Math.abs(amount)))) + '</td></tr>';
   }
   var src = esc(rg.source || "your tax calculator");
-  return '<div class="card"><h2>Tax for the year · ' + fyName + ' · new regime</h2>' +
+  var head = '<div class="card"><h2>Tax for the year · ' + fyName + ' · new regime</h2>';
+  var caption =
     '<p class="cap">Worked out the way your tax calculator does it (' + src + '): your whole income for the ' +
       'year through the new-regime slabs, then less the tax already taken at source. A heads-up to plan with, ' +
-      'not tax advice — the October raise, any ex-gratia and the rest of the year\'s interest will move it.</p>' +
+      'not tax advice — the October raise, any ex-gratia and the rest of the year\'s interest will move it.</p>';
+  var boxes =
     '<div class="grid k4">' +
       '<div class="exit-box"><div class="lbl">Tax for the year</div><div class="v">' + money(total) + '</div>' +
         '<div class="t">on ' + money(income) + ' taxable income</div></div>' +
@@ -1209,7 +1211,9 @@ function yearTaxCard() {
           (monthsLeft > 1 ? 's' : '') + ' (' + spanLbl + ')' : 'more taken at source than due') + '</div></div>' +
       '<div class="exit-box"><div class="lbl">Interest income</div><div class="v">' + money(interest) + '</div>' +
         '<div class="t">' + money(otherSoFar + sbSoFar) + ' received so far</div></div>' +
-    '</div>' +
+    '</div>';
+  if (compact) return head + boxes + '</div>';
+  return head + caption + boxes +
     '<div class="tbl-scroll" style="margin-top:12px"><table><tbody>' +
       line('Salary', salGross, money(salGrossSoFar) + ' from ' + slips.length + ' payslips' +
         (left ? ' + ' + left + ' months at ' + money(rateSlip.gross) + ' (' + monthLabel(rateSlip.m) + ', the latest month without a bonus)' : '')) +
@@ -1281,7 +1285,7 @@ function renderOverview() {
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
 
-    yearTaxCard() +
+    yearTaxCard(true) +
     interestTaxCards() +
     fdInterestTaxCard() +
 
