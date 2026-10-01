@@ -2711,13 +2711,49 @@ function salaryTaxByYear(styles, meta) {
       '<tbody>' + rows + '</tbody></table></div></div>';
 }
 
+/* Old vs new regime side by side, exactly as Vinod's tax calculator computed
+   them in Excel (its filled copy; data.json exitTax.compare). Nothing is
+   recomputed here, so the figures are the calculator's own; the caption says
+   when they were calculated. */
+function regimeCompareCard() {
+  var c = DATA.exitTax && DATA.exitTax.compare;
+  if (!c || !c.rows.length) return "";
+  function get(item) { return c.rows.filter(function (r) { return r.item === item; })[0] || { old: 0, "new": 0 }; }
+  var tot = get("Total tax"), due = get("Still to pay"), inc = get("Taxable income");
+  var better = tot["new"] <= tot.old ? "new" : "old";
+  var saving = Math.abs(tot.old - tot["new"]);
+  var KEY = { "Taxable income": 1, "Total tax": 1, "Still to pay": 1 };
+  var body = c.rows.map(function (r) {
+    var strong = KEY[r.item];
+    function v(x) { return strong ? '<b>' + money(x) + '</b>' : money(x); }
+    return '<tr><td>' + (strong ? '<b>' + esc(r.item) + '</b>' : esc(r.item)) + '</td>' +
+      '<td class="num">' + v(r.old) + '</td><td class="num">' + v(r["new"]) + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Old vs new regime</h2>' +
+    '<p class="cap">Both regimes as your tax calculator works them out (' + esc(c.source) + '). The old regime ' +
+      'allows HRA on rent paid, 80C, 80D and the savings-interest deduction; the new regime has lower slabs and a ' +
+      'bigger standard deduction but almost no deductions. Re-filled whenever the calculator is refreshed.</p>' +
+    '<div class="grid k4" style="margin-bottom:12px">' +
+      '<div class="exit-box"><div class="lbl">Old regime</div><div class="v">' + money(tot.old) + '</div>' +
+        '<div class="t">on ' + money(inc.old) + ' taxable</div></div>' +
+      '<div class="exit-box"><div class="lbl">New regime</div><div class="v">' + money(tot["new"]) + '</div>' +
+        '<div class="t">on ' + money(inc["new"]) + ' taxable</div></div>' +
+      '<div class="exit-box"><div class="lbl">' + (better === "new" ? 'New regime saves' : 'Old regime saves') + '</div>' +
+        '<div class="v">' + money(saving) + '</div><div class="t">for the year</div></div>' +
+      '<div class="exit-box"><div class="lbl">Still to pay</div><div class="v">' + money(due[better]) + '</div>' +
+        '<div class="t">under the ' + better + ' regime (' + money(due[better === "new" ? "old" : "new"]) + ' under the other)</div></div>' +
+    '</div>' +
+    '<div class="tbl-scroll"><table><thead><tr><th>Item</th><th class="num">Old regime</th><th class="num">New regime' +
+      '</th></tr></thead><tbody>' + body + '</tbody></table></div></div>';
+}
+
 /* Everything tax in one place: the year's estimate with full workings, tax on
    interest paid out by holdings, and salary tax by year. */
 function renderTax() {
   var meta = DATA.salaryMeta || {}, styles = {};
   (DATA.salary || []).slice().sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; })
     .forEach(function (p) { employerStyle(p.company, styles, meta); });
-  var html = yearTaxCard() + interestTaxCards() + salaryTaxByYear(styles, meta);
+  var html = yearTaxCard() + regimeCompareCard() + interestTaxCards() + salaryTaxByYear(styles, meta);
   el("tab-tax").innerHTML = html ||
     '<div class="card"><h2>Tax Planning</h2><div class="empty">No tax data yet.</div></div>';
 }
