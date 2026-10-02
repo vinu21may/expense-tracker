@@ -431,7 +431,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v42";
+var APP_BUILD = "finances-shell-v43";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -977,7 +977,7 @@ function chartNet(container, keys, map, fit) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, mOpen: {}, mYear: "", tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, mOpen: {}, mYear: "", mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -3672,6 +3672,138 @@ function fdRenewals(rows) {
 
 function signed(n) { return n < 0 ? '−' + money(-n) : money(n); }
 
+/* "Show" on the Monthly tab: one category, or one sub-category, month by month.
+   Spending categories count debits, income categories credits -- the same
+   amounts the Spending tab and the Overview tiles use. Months with nothing
+   spent show ₹0 so a gap is visible, from the first month the item appears. */
+function catRows(cat, sub) {
+  // a category is spending if any of its rows is; a stray Income row under it is left out
+  var typ = DATA.txns.some(function (t) { return t.c === cat && t.t === "Expense"; }) ? "Expense" : "Income";
+  return DATA.txns.filter(function (t) {
+    return charted(t) && t.t === typ && t.c === cat && (!sub || t.s === sub);
+  });
+}
+function nOf(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+function catAmt(t) { return t.t === "Income" ? t.cr : t.db; }
+
+function catMonthDetail(k) {
+  var rows = catRows(STATE.mCat, STATE.mSub).filter(function (t) { return monthKey(t.d) === k && catAmt(t) > 0; })
+                                           .sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
+  var bySub = {};
+  rows.forEach(function (t) { bySub[t.s] = (bySub[t.s] || 0) + catAmt(t); });
+  var subs = Object.keys(bySub).sort(function (a, b) { return bySub[b] - bySub[a]; });
+  var html = (!STATE.mSub && subs.length > 1
+      ? '<div class="exit-box" style="margin:6px 0 12px"><div class="lbl">By sub-category</div>' +
+          subs.map(function (x) { return kv(esc(x), Math.round(bySub[x])); }).join("") + '</div>'
+      : '') +
+    (rows.length
+      ? '<div class="exit-box"><div class="lbl">' + nOf(rows.length, 'transaction') + '</div>' +
+          rows.map(function (t) {
+            return kv(dayLabel(t.d) + ' · ' + esc(t.n || t.ds) + (STATE.mSub ? '' : ' <span class="muted">' + esc(t.s) + '</span>'),
+                      Math.round(catAmt(t)));
+          }).join("") + '</div>'
+      : '<div class="empty">Nothing this month.</div>');
+  return '<div class="m-detail">' + html +
+    (rows.length ? '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">Open these on the Transactions tab ›</button></p>' : '') +
+    '</div>';
+}
+
+function catMonthlyCard(allKeys) {
+  var cat = STATE.mCat, sub = STATE.mSub, rows = catRows(cat, sub);
+  var isInc = rows.length && rows[0].t === "Income";
+  var per = {}, cnt = {};
+  rows.forEach(function (t) { var k = monthKey(t.d); per[k] = (per[k] || 0) + catAmt(t); if (catAmt(t) > 0) cnt[k] = (cnt[k] || 0) + 1; });
+  var first = Object.keys(per).sort()[0];
+  var keys = allKeys.filter(function (k) { return first && k >= first; });
+  var idx = monthsIndex(DATA.txns).map;
+  var name = sub ? sub : cat;
+
+  // headline figures: this year and last year, as totals and as a monthly average
+  var last = keys[keys.length - 1] || "", yNow = last.slice(0, 4), yPrev = String(+yNow - 1);
+  // the month still under way is in the total but not the average -- a day or
+  // two of it would drag the average down
+  var d0 = new Date(), cur = d0.getFullYear() + "-" + String(d0.getMonth() + 1).padStart(2, "0");
+  function yr(y) {
+    var ks = keys.filter(function (k) { return k.slice(0, 4) === y; });
+    var full = ks.filter(function (k) { return k !== cur; });
+    var sum = ks.reduce(function (s, k) { return s + (per[k] || 0); }, 0);
+    var fsum = full.reduce(function (s, k) { return s + (per[k] || 0); }, 0);
+    return { sum: sum, n: ks.length, avg: full.length ? fsum / full.length : 0, full: full.length };
+  }
+  var now = yr(yNow), prev = yr(yPrev);
+  var peak = keys.reduce(function (b, k) { return !b || (per[k] || 0) > (per[b] || 0) ? k : b; }, null);
+  var change = prev.avg > 0 ? (now.avg - prev.avg) / prev.avg * 100 : null;
+
+  var shown = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; }).reverse();
+  var tot = 0, totN = 0;
+  var body = shown.map(function (k) {
+    var v = per[k] || 0, open = !!STATE.mcOpen[k];
+    var base = isInc ? (idx[k] || blankAgg()).income : (idx[k] || blankAgg()).expense;
+    tot += v; totN += cnt[k] || 0;
+    return '<tr class="tax-row" data-key="' + k + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
+        '<td style="white-space:nowrap"><span class="chev">' + (open ? '▾' : '▸') + '</span> <b>' + monthLabel(k) + '</b></td>' +
+        '<td class="num">' + (v ? '<b>' + money(v) + '</b>' : '<span class="muted">₹0</span>') + '</td>' +
+        '<td class="num">' + (cnt[k] || '—') + '</td>' +
+        '<td class="num">' + (base > 0 && v ? (v / base * 100).toFixed(1) + '%' : '—') + '</td>' +
+      '</tr>' +
+      '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + k + '"><td colspan="4">' +
+        (open ? catMonthDetail(k) : '') + '</td></tr>';
+  }).join("");
+
+  var tiles = '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">' + yNow + ' so far</div><div class="val">' + money(now.sum) + '</div>' +
+        '<div class="sub">over ' + nOf(now.n, 'month') + '</div></div>' +
+      '<div class="tile"><div class="lbl">A month in ' + yNow + '</div><div class="val">' + money(now.avg) + '</div>' +
+        (change === null ? '<div class="sub muted">no ' + yPrev + ' to compare</div>'
+          : '<div class="sub ' + ((change >= 0) === isInc ? 'up' : 'down') + '">' + (change >= 0 ? '↑ ' : '↓ ') +
+            Math.abs(change).toFixed(0) + '% vs ' + money(prev.avg) + ' in ' + yPrev + '</div>') + '</div>' +
+      '<div class="tile"><div class="lbl">' + yPrev + '</div><div class="val">' + money(prev.sum) + '</div>' +
+        '<div class="sub">' + (prev.n ? 'over ' + nOf(prev.n, 'month') : 'nothing recorded') + '</div></div>' +
+      '<div class="tile"><div class="lbl">Highest month</div><div class="val">' + money(peak ? per[peak] : 0) + '</div>' +
+        '<div class="sub">' + (peak ? monthLabel(peak) : '—') + '</div></div>' +
+    '</div>';
+
+  return tiles + '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
+    '<p class="cap">Newest first, from the first month it appears. Share is of that month\'s ' + (isInc ? 'income' : 'spending') +
+      '. Tap a month for the transactions.</p>' +
+    (body
+      ? '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">' + (isInc ? 'Received' : 'Spent') + '</th>' +
+          '<th class="num">Transactions</th><th class="num">Share</th></tr></thead><tbody>' + body +
+          '<tr class="m-total"><td><b>' + (STATE.mYear ? STATE.mYear + ' total' : 'All months') + '</b></td>' +
+            '<td class="num"><b>' + money(tot) + '</b></td><td class="num"><b>' + totN + '</b></td><td></td></tr>' +
+          '</tbody></table></div>'
+      : '<div class="empty">Nothing recorded' + (STATE.mYear ? ' in ' + STATE.mYear : '') + '.</div>') +
+    '</div>';
+}
+
+/* Category and sub-category pickers. Spending first, then income, A to Z. */
+function catPickers() {
+  var groups = { Expense: {}, Income: {} };
+  DATA.txns.forEach(function (t) {
+    if (!charted(t) || !groups[t.t] || !t.c) return;
+    var g = groups[t.t]; (g[t.c] = g[t.c] || {})[t.s || ""] = 1;
+  });
+  if (STATE.mCat && !groups.Expense[STATE.mCat] && !groups.Income[STATE.mCat]) { STATE.mCat = ""; STATE.mSub = ""; }
+  function opts(g) {
+    return Object.keys(g).sort().map(function (c) {
+      return '<option value="' + esc(c) + '"' + (c === STATE.mCat ? ' selected' : '') + '>' + esc(c) + '</option>';
+    }).join("");
+  }
+  var html = '<div class="f"><label for="m-cat">Show</label><select id="m-cat">' +
+    '<option value="">Income vs expenses</option>' +
+    '<optgroup label="Spending">' + opts(groups.Expense) + '</optgroup>' +
+    '<optgroup label="Income">' + opts(groups.Income) + '</optgroup></select></div>';
+  if (STATE.mCat) {
+    var subs = Object.keys(groups.Expense[STATE.mCat] || groups.Income[STATE.mCat]).filter(Boolean).sort();
+    if (STATE.mSub && subs.indexOf(STATE.mSub) < 0) STATE.mSub = "";
+    html += '<div class="f"><label for="m-sub">Sub-category</label><select id="m-sub">' +
+      '<option value="">All of ' + esc(STATE.mCat) + '</option>' +
+      subs.map(function (x) { return '<option value="' + esc(x) + '"' + (x === STATE.mSub ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") +
+      '</select></div>';
+  }
+  return html;
+}
+
 function renderMonthly() {
   var idx = monthsIndex(DATA.txns), keys = idx.keys, map = idx.map;
   var years = [];
@@ -3700,10 +3832,10 @@ function renderMonthly() {
   }).join("");
 
   var host = el("tab-monthly");
-  host.innerHTML =
-    '<div class="filters">' +
+  var filters = '<div class="filters">' + catPickers() +
       '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
-    '</div>' +
+    '</div>';
+  host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
     '<div class="card"><h2>Month by month</h2>' +
       '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.</p>' +
       '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">Income</th><th class="num">Expenses</th>' +
@@ -3713,24 +3845,24 @@ function renderMonthly() {
           '<td class="num"><b>' + money(tot.income) + '</b></td><td class="num"><b>' + money(tot.expense) + '</b></td>' +
           '<td class="num"><b>' + signed(tot.invest) + '</b></td><td class="num"><b>' + signed(net(tot)) + '</b></td>' +
           '<td class="num"><b>' + (tot.income > 0 ? (rate(tot) * 100).toFixed(1) + '%' : '—') + '</b></td></tr>' +
-      '</tbody></table></div></div>';
+      '</tbody></table></div></div>');
 
   function wireDetail(scope) {
     scope.querySelectorAll(".m-txns").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
-        STATE.tMonth = b.getAttribute("data-m"); STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = "";
-        STATE.tSub = ""; STATE.tType = ""; STATE.tLimit = 200;
+        STATE.tMonth = b.getAttribute("data-m"); STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = STATE.mCat;
+        STATE.tSub = STATE.mSub; STATE.tType = ""; STATE.tLimit = 200;
         switchTab("txns");
       });
     });
   }
   host.querySelectorAll("tr.tax-row").forEach(function (tr) {
     function toggle() {
-      var k = tr.getAttribute("data-key"), open = !STATE.mOpen[k];
-      STATE.mOpen[k] = open;
+      var k = tr.getAttribute("data-key"), seen = STATE.mCat ? STATE.mcOpen : STATE.mOpen, open = !seen[k];
+      seen[k] = open;
       var d = host.querySelector('tr.tax-detail[data-for="' + k + '"]');
-      if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = monthDetail(k); wireDetail(d); }
+      if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = STATE.mCat ? catMonthDetail(k) : monthDetail(k); wireDetail(d); }
       d.hidden = !open;
       tr.setAttribute("aria-expanded", open);
       tr.querySelector(".chev").textContent = open ? "▾" : "▸";
@@ -3740,11 +3872,13 @@ function renderMonthly() {
   });
   wireDetail(host);
   el("m-year").addEventListener("change", function () { STATE.mYear = this.value; renderMonthly(); });
+  el("m-cat").addEventListener("change", function () { STATE.mCat = this.value; STATE.mSub = ""; STATE.mcOpen = {}; renderMonthly(); });
+  if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });
 }
 
 /* Overview tile -> Monthly tab, with that month open and scrolled to. */
 function openMonth(k) {
-  STATE.mOpen[k] = true;
+  STATE.mOpen[k] = true; STATE.mCat = ""; STATE.mSub = "";
   if (STATE.mYear && STATE.mYear !== k.slice(0, 4)) STATE.mYear = "";
   switchTab("monthly");
   var r = el("m-row-" + k);
