@@ -431,7 +431,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v43";
+var APP_BUILD = "finances-shell-v44";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -865,8 +865,9 @@ function chartCategories(container, rows, total, onPick, highlight) {
   }
 }
 
-/* One sub-category's spend, month by month. Single series, so no legend. */
-function chartSubTrend(container, keys, vals, label) {
+/* One sub-category's spend, month by month. Single series, so no legend.
+   onPick, if given, is called with the month of a tapped bar. */
+function chartSubTrend(container, keys, vals, label, onPick) {
   if (!keys.length) { container.innerHTML = '<div class="empty">No months to chart.</div>'; return; }
 
   var W = chartWidth(container), H = 186, PL = 62, PR = 12, PT = 20, PB = 42;
@@ -894,7 +895,7 @@ function chartSubTrend(container, keys, vals, label) {
     var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
       '<div class="t-row">' + esc(label) + '<b>' + money(val) + '</b></div>';
     s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
-         '" data-tip="' + esc(tip) + '"/>';
+         '" data-k="' + k + '" data-tip="' + esc(tip) + '"' + (onPick ? ' style="cursor:pointer"' : '') + '/>';
     // Only every other label once the months get tight, to stop them colliding.
     if (band > 34 || i % 2 === 0) {
       s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (H - 22) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
@@ -913,6 +914,9 @@ function chartSubTrend(container, keys, vals, label) {
     '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' + esc(label) + ' spending each month">' + s + '</svg></div>';
   var wrap = container.querySelector(".chartwrap");
   attachTip(wrap, wrap.querySelector("svg"));
+  if (onPick) wrap.querySelectorAll("rect.hit").forEach(function (r) {
+    r.addEventListener("click", function () { onPick(r.getAttribute("data-k")); });
+  });
 }
 
 /* Net-position sparkline: monthly net, above/below zero. */
@@ -3624,7 +3628,7 @@ function monthDetail(k) {
   var bigBox = big.length
     ? '<div class="exit-box" style="margin-top:12px"><div class="lbl">Biggest expenses</div>' +
         big.slice(0, 5).map(function (t) {
-          return kv(dayLabel(t.d) + ' · ' + what(t) + ' <span class="muted">' + esc(t.c) + '</span>', Math.round(t.db));
+          return kv('<span class="muted">#' + t.row + '</span> ' + dayLabel(t.d) + ' · ' + what(t) + ' <span class="muted">' + esc(t.c) + '</span>', Math.round(t.db));
         }).join("") + '</div>'
     : '';
 
@@ -3699,7 +3703,8 @@ function catMonthDetail(k) {
     (rows.length
       ? '<div class="exit-box"><div class="lbl">' + nOf(rows.length, 'transaction') + '</div>' +
           rows.map(function (t) {
-            return kv(dayLabel(t.d) + ' · ' + esc(t.n || t.ds) + (STATE.mSub ? '' : ' <span class="muted">' + esc(t.s) + '</span>'),
+            return kv('<span class="muted">#' + t.row + '</span> ' + dayLabel(t.d) + ' · ' + esc(t.n || t.ds) +
+                      (STATE.mSub ? '' : ' <span class="muted">' + esc(t.s) + '</span>'),
                       Math.round(catAmt(t)));
           }).join("") + '</div>'
       : '<div class="empty">Nothing this month.</div>');
@@ -3763,7 +3768,10 @@ function catMonthlyCard(allKeys) {
         '<div class="sub">' + (peak ? monthLabel(peak) : '—') + '</div></div>' +
     '</div>';
 
-  return tiles + '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
+  return tiles +
+    '<div class="card"><h2>' + esc(name) + ' each month</h2><p class="cap">' +
+      (STATE.mYear || 'All years') + '. Tap a bar to open that month below.</p><div id="m-cat-chart"></div></div>' +
+    '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
     '<p class="cap">Newest first, from the first month it appears. Share is of that month\'s ' + (isInc ? 'income' : 'spending') +
       '. Tap a month for the transactions.</p>' +
     (body
@@ -3778,10 +3786,16 @@ function catMonthlyCard(allKeys) {
 
 /* Category and sub-category pickers. Spending first, then income, A to Z. */
 function catPickers() {
+  // A category goes under Spending if it has any spending, and under Income only
+  // if it is income alone -- the odd credit typed Income under a spending
+  // category (a friend paying back their share) must not list it twice.
   var groups = { Expense: {}, Income: {} };
-  DATA.txns.forEach(function (t) {
-    if (!charted(t) || !groups[t.t] || !t.c) return;
-    var g = groups[t.t]; (g[t.c] = g[t.c] || {})[t.s || ""] = 1;
+  ["Expense", "Income"].forEach(function (typ) {
+    DATA.txns.forEach(function (t) {
+      if (!charted(t) || t.t !== typ || !t.c) return;
+      if (typ === "Income" && groups.Expense[t.c]) return;
+      var g = groups[typ]; (g[t.c] = g[t.c] || {})[t.s || ""] = 1;
+    });
   });
   if (STATE.mCat && !groups.Expense[STATE.mCat] && !groups.Income[STATE.mCat]) { STATE.mCat = ""; STATE.mSub = ""; }
   function opts(g) {
@@ -3871,6 +3885,18 @@ function renderMonthly() {
     tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   });
   wireDetail(host);
+  if (el("m-cat-chart")) {
+    var ck = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; });
+    var cr = catRows(STATE.mCat, STATE.mSub), cv = {};
+    cr.forEach(function (t) { var k = monthKey(t.d); cv[k] = (cv[k] || 0) + catAmt(t); });
+    var firstK = Object.keys(cv).sort()[0];
+    ck = ck.filter(function (k) { return firstK && k >= firstK; });
+    chartSubTrend(el("m-cat-chart"), ck, ck.map(function (k) { return cv[k] || 0; }), STATE.mSub || STATE.mCat, function (k) {
+      STATE.mcOpen[k] = true; renderMonthly();
+      var r = host.querySelector('tr.tax-row[data-key="' + k + '"]');
+      if (r) r.scrollIntoView({ block: "start" });
+    });
+  }
   el("m-year").addEventListener("change", function () { STATE.mYear = this.value; renderMonthly(); });
   el("m-cat").addEventListener("change", function () { STATE.mCat = this.value; STATE.mSub = ""; STATE.mcOpen = {}; renderMonthly(); });
   if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });

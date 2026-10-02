@@ -17,7 +17,7 @@
  * the fix was live on GitHub Pages. Changing this string reinstalls the worker,
  * which claims open pages and deletes every older cache in activate.
  */
-var CACHE = "finances-shell-v43";
+var CACHE = "finances-shell-v44";
 // index.html carries the same string as APP_BUILD -- bump BOTH together. The
 // Refresh button compares them and reloads the page when this file is newer.
 var SHELL = ["./", "./index.html", "./manifest.json", "./icon.png"];
