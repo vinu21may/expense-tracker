@@ -431,7 +431,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v41";
+var APP_BUILD = "finances-shell-v42";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3612,10 +3612,11 @@ function monthDetail(k) {
       return '<div class="kv"><span>' + esc(r[0]) + ' <span class="muted">' + pct + '%</span></span><b>' + money(r[1]) + '</b></div>';
     }).join("") : kvText('No expenses this month', '', 'note')) + '</div>';
 
+  var invLines = fdRenewals(inv);
   var invBox = '<div class="exit-box"><div class="lbl">Invested</div><div class="v">' + signed(a.invest) + '</div>' +
-    (inv.length ? inv.map(function (t) {
-      return kv(dayLabel(t.d) + ' · ' + what(t), Math.round(t.db - t.cr));
-    }).join("") + kvText('A minus is money taken back out, such as an FD that matured', '', 'note')
+    (invLines.length ? invLines.map(function (l) { return kv(l[0], l[1]); }).join("") +
+      (invLines.some(function (l) { return l[1] < 0; })
+        ? kvText('A minus is money taken back out of savings', '', 'note') : '')
                 : kvText('Nothing newly invested', '', 'note')) +
     '<div class="kv total"><span>Net saved</span><b>' + signed(net(a)) + '</b></div>' +
     kvText('Savings rate', (rate(a) * 100).toFixed(1) + '%') + '</div>';
@@ -3630,6 +3631,43 @@ function monthDetail(k) {
   return '<div class="m-detail"><div class="grid k3" style="margin:6px 0 4px">' + incBox + expBox + invBox + '</div>' + bigBox +
     '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">See all ' + n +
     ' transactions for ' + monthLabel(k) + ' ›</button></p></div>';
+}
+
+/* An FD that matures and a new FD opened within a week of it -- or later the
+   same month for much the same amount -- are one renewal,
+   shown as a single line worth the difference -- usually the interest left in.
+   Only the display is merged; the amounts and the month's total are unchanged,
+   and the two bank lines stay on the Transactions tab. Largest maturity first,
+   each paired with the placement closest to it in amount. */
+function fdRenewals(rows) {
+  var fd = function (t) { return t.s === "Fixed Deposit"; };
+  var outs = rows.filter(function (t) { return fd(t) && t.cr > 0 && !t.db; })
+                 .sort(function (a, b) { return b.cr - a.cr; });
+  var ins = rows.filter(function (t) { return fd(t) && t.db > 0 && !t.cr; });
+  var used = [], lines = [];
+  function days(a, b) { return Math.abs(new Date(a) - new Date(b)) / 864e5; }
+  outs.forEach(function (o) {
+    var best = null;
+    ins.forEach(function (n) {
+      if (used.indexOf(n) >= 0) return;
+      if (days(n.d, o.d) > 7 && Math.abs(n.db - o.cr) > o.cr * 0.05) return;
+      if (!best || Math.abs(n.db - o.cr) < Math.abs(best.db - o.cr)) best = n;
+    });
+    if (!best) return;
+    used.push(o, best);
+    var diff = best.db - o.cr, pair = ' (' + money(o.cr) + ' → ' + money(best.db) + ')';
+    var what = Math.abs(diff) <= o.cr * 0.05 ? 'FD renewed'
+             : diff > 0 ? 'FD renewed with ' + money(diff) + ' added'
+             : 'FD renewed, ' + money(-diff) + ' kept as cash';
+    var when = days(o.d, best.d) > 7 ? dayLabel(o.d) + ' → ' + dayLabel(best.d) : dayLabel(o.d < best.d ? o.d : best.d);
+    lines.push([o.d < best.d ? o.d : best.d, when + ' · ' + what +
+      '<span class="muted">' + pair + '</span>', Math.round(diff)]);
+  });
+  rows.forEach(function (t) {
+    if (used.indexOf(t) < 0) lines.push([t.d, dayLabel(t.d) + ' · ' + esc(t.n || t.ds), Math.round(t.db - t.cr)]);
+  });
+  return lines.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; })
+              .map(function (l) { return [l[1], l[2]]; });
 }
 
 function signed(n) { return n < 0 ? '−' + money(-n) : money(n); }
