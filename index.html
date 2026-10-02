@@ -436,7 +436,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v45";
+var APP_BUILD = "finances-shell-v46";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -986,7 +986,7 @@ function chartNet(container, keys, map, fit) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, mOpen: {}, mYear: "", mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "", mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -3592,13 +3592,50 @@ function renderAmma() {
    opens in place into where that month's money came from and went. Same
    numbers as the Overview tiles (monthsIndex / addTo), so the two always agree.
    The Overview tiles land here with their month already open. */
+/* One-off costs (Vinod, 2 Oct 2026): the Monthly tab can set aside spending
+   that is not part of an ordinary month, so the everyday months stand out.
+   Display only -- nothing in the data changes, and Overview is untouched.
+     - anything filed Moving & Relocation
+     - an insurance premium of Rs 5,000 or more (the yearly renewals)
+     - any other single expense of Rs 40,000 or more, except rent and home-loan
+       EMIs, which are regular however large */
+var ONE_OFF_MIN = 40000, ONE_OFF_INSURANCE_MIN = 5000;
+function isOneOff(t) {
+  if (!charted(t) || t.t !== "Expense" || !(t.db > 0)) return false;
+  if (t.s === "Moving & Relocation") return true;
+  if (t.s === "Insurance Premium") return t.db >= ONE_OFF_INSURANCE_MIN;
+  if (t.s === "Rent" || t.s === "Home Loan") return false;
+  return t.db >= ONE_OFF_MIN;
+}
+function oneOffByMonth() {
+  var m = {};
+  DATA.txns.forEach(function (t) {
+    if (!isOneOff(t)) return;
+    var k = monthKey(t.d);
+    (m[k] = m[k] || { sum: 0, rows: [] }).sum += t.db;
+    m[k].rows.push(t);
+  });
+  return m;
+}
+/* the month as the table shows it: one-offs taken out of Expenses when set aside */
+function shownAgg(k, a, oo) {
+  a = a || blankAgg();
+  if (!STATE.mOneOff || !oo[k]) return a;
+  var b = {}; for (var x in a) b[x] = a[x];
+  b.expense -= oo[k].sum;
+  return b;
+}
+
 function monthDetail(k) {
   var inc = {}, exp = {}, inv = [], big = [], n = 0;
   DATA.txns.forEach(function (t) {
     if (!charted(t) || monthKey(t.d) !== k) return;
     n++;
     if (t.t === "Income") { var nm = t.s || t.c || "Other"; inc[nm] = (inc[nm] || 0) + t.cr; }
-    else if (t.t === "Expense") { exp[t.c] = (exp[t.c] || 0) + t.db; if (t.db > 0) big.push(t); }
+    else if (t.t === "Expense") {
+      if (STATE.mOneOff && isOneOff(t)) return;           // listed in its own box below
+      exp[t.c] = (exp[t.c] || 0) + t.db; if (t.db > 0) big.push(t);
+    }
     else if (t.t === "Savings" && (t.db || t.cr)) inv.push(t);
   });
   function ranked(m) {
@@ -3606,7 +3643,8 @@ function monthDetail(k) {
                  .filter(function (r) { return Math.abs(r[1]) >= 0.5; })
                  .sort(function (a, b) { return b[1] - a[1]; });
   }
-  var a = monthsIndex(DATA.txns).map[k] || blankAgg();
+  var oo = oneOffByMonth();
+  var a = shownAgg(k, monthsIndex(DATA.txns).map[k], oo);
   var incR = ranked(inc), expR = ranked(exp);
   big.sort(function (x, y) { return y.db - x.db; });
   function what(t) { return esc(t.n || t.ds); }
@@ -3615,7 +3653,7 @@ function monthDetail(k) {
     (incR.length ? incR.map(function (r) { return kv(esc(r[0]), Math.round(r[1])); }).join("")
                  : kvText('No income this month', '', 'note')) + '</div>';
 
-  var expBox = '<div class="exit-box"><div class="lbl">Expenses by category</div><div class="v">' + money(a.expense) + '</div>' +
+  var expBox = '<div class="exit-box"><div class="lbl">' + (STATE.mOneOff ? 'Everyday expenses' : 'Expenses by category') + '</div><div class="v">' + money(a.expense) + '</div>' +
     (expR.length ? expR.map(function (r) {
       var pct = a.expense > 0 ? Math.round(r[1] / a.expense * 100) : 0;
       return '<div class="kv"><span>' + esc(r[0]) + ' <span class="muted">' + pct + '%</span></span><b>' + money(r[1]) + '</b></div>';
@@ -3637,7 +3675,14 @@ function monthDetail(k) {
         }).join("") + '</div>'
     : '';
 
-  return '<div class="m-detail"><div class="grid k3" style="margin:6px 0 4px">' + incBox + expBox + invBox + '</div>' + bigBox +
+  var ooBox = STATE.mOneOff && oo[k]
+    ? '<div class="exit-box" style="margin-top:12px"><div class="lbl">One-off costs set aside · ' + money(oo[k].sum) + '</div>' +
+        oo[k].rows.slice().sort(function (x, y) { return y.db - x.db; }).map(function (t) {
+          return txnLine(t, t.db, t.c + ' / ' + t.s);
+        }).join("") + '</div>'
+    : '';
+
+  return '<div class="m-detail"><div class="grid k3" style="margin:6px 0 4px">' + incBox + expBox + invBox + '</div>' + ooBox + bigBox +
     '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">See all ' + n +
     ' transactions for ' + monthLabel(k) + ' ›</button></p></div>';
 }
@@ -3836,19 +3881,22 @@ function renderMonthly() {
   if (STATE.mYear && years.indexOf(STATE.mYear) < 0) STATE.mYear = "";
   var shown = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; }).reverse();
 
+  var oo = oneOffByMonth(), OO = !!STATE.mOneOff, totOO = 0;
   var tot = blankAgg();
   var body = shown.map(function (k) {
-    var a = map[k], open = !!STATE.mOpen[k], ns = net(a);
+    var a = shownAgg(k, map[k], oo), open = !!STATE.mOpen[k], ns = net(a);
     tot.income += a.income; tot.expense += a.expense; tot.invest += a.invest;
+    totOO += oo[k] ? oo[k].sum : 0;
     return '<tr class="tax-row" data-key="' + k + '" id="m-row-' + k + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
         '<td style="white-space:nowrap"><span class="chev">' + (open ? '▾' : '▸') + '</span> <b>' + monthLabel(k) + '</b></td>' +
         '<td class="num">' + money(a.income) + '</td>' +
         '<td class="num">' + money(a.expense) + '</td>' +
+        (OO ? '<td class="num">' + (oo[k] ? money(oo[k].sum) : '<span class="muted">—</span>') + '</td>' : '') +
         '<td class="num">' + signed(a.invest) + '</td>' +
         '<td class="num"><b class="' + (ns < 0 ? 'neg' : '') + '">' + signed(ns) + '</b></td>' +
         '<td class="num">' + (a.income > 0 ? (rate(a) * 100).toFixed(1) + '%' : '—') + '</td>' +
       '</tr>' +
-      '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + k + '"><td colspan="6">' +
+      '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + k + '"><td colspan="' + (OO ? 7 : 6) + '">' +
         (open ? monthDetail(k) : '') + '</td></tr>';
   }).join("");
 
@@ -3858,16 +3906,24 @@ function renderMonthly() {
 
   var host = el("tab-monthly");
   var filters = '<div class="filters">' + catPickers() +
+      (STATE.mCat ? '' : '<div class="f"><label for="m-oneoff">One-off costs</label><select id="m-oneoff">' +
+        '<option value=""' + (OO ? '' : ' selected') + '>Included</option>' +
+        '<option value="1"' + (OO ? ' selected' : '') + '>Set aside</option></select></div>') +
       '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
     '</div>';
   host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
     '<div class="card"><h2>Month by month</h2>' +
-      '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.</p>' +
-      '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">Income</th><th class="num">Expenses</th>' +
+      '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.' +
+        (OO ? ' <b>One-off costs are set aside</b>: Expenses and Net saved leave out moving costs, insurance premiums of ' +
+          money(ONE_OFF_INSURANCE_MIN) + ' or more, and any other single expense of ' + money(ONE_OFF_MIN) +
+          ' or more (rent and home-loan EMIs excepted). Open a month to see what was set aside.' : '') + '</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">Income</th><th class="num">' +
+        (OO ? 'Everyday expenses' : 'Expenses') + '</th>' + (OO ? '<th class="num">One-off</th>' : '') +
         '<th class="num">Invested</th><th class="num">Net saved</th><th class="num">Savings rate</th></tr></thead>' +
       '<tbody>' + body +
         '<tr class="m-total"><td><b>' + (STATE.mYear ? STATE.mYear + ' total' : 'All months') + '</b></td>' +
           '<td class="num"><b>' + money(tot.income) + '</b></td><td class="num"><b>' + money(tot.expense) + '</b></td>' +
+          (OO ? '<td class="num"><b>' + money(totOO) + '</b></td>' : '') +
           '<td class="num"><b>' + signed(tot.invest) + '</b></td><td class="num"><b>' + signed(net(tot)) + '</b></td>' +
           '<td class="num"><b>' + (tot.income > 0 ? (rate(tot) * 100).toFixed(1) + '%' : '—') + '</b></td></tr>' +
       '</tbody></table></div></div>');
@@ -3909,6 +3965,12 @@ function renderMonthly() {
     });
   }
   el("m-year").addEventListener("change", function () { STATE.mYear = this.value; renderMonthly(); });
+  if (el("m-oneoff")) el("m-oneoff").addEventListener("change", function () {
+    STATE.mOneOff = !!this.value;
+    try { localStorage.setItem("ft.mOneOff", STATE.mOneOff ? "1" : ""); } catch (e) { /* private mode */ }
+    // opened months rebuild with or without their one-off box
+    renderMonthly();
+  });
   el("m-cat").addEventListener("change", function () { STATE.mCat = this.value; STATE.mSub = ""; STATE.mcOpen = {}; renderMonthly(); });
   if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });
 }
