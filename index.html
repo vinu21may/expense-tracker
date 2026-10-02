@@ -436,7 +436,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v46";
+var APP_BUILD = "finances-shell-v47";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -708,12 +708,17 @@ function chartWidth(container) {
   return cw > WIDE_FROM ? Math.round(cw / WIDE_SCALE) : 760;
 }
 
-function chartIncomeExpense(container, keys, map, fit) {
+/* opts (Monthly tab): oneOff {month: amount} stacks set-aside one-off costs on
+   top of the everyday expense bar in a lighter shade; onPick(month) runs when a
+   month is tapped; rerender redraws the owning tab when the scale is switched. */
+function chartIncomeExpense(container, keys, map, fit, opts) {
+  opts = opts || {};
+  var oo = opts.oneOff || {};
   var W = chartWidth(container), H = 300, PL = 62, PR = 12, PT = 34, PB = 34;
   var iw = W - PL - PR, ih = H - PT - PB;
 
   var all = [];
-  keys.forEach(function (k) { all.push(map[k].income, map[k].expense); });
+  keys.forEach(function (k) { all.push(map[k].income, map[k].expense + (oo[k] || 0)); });
   var ac = axisCap(all);
   var trueMax = Math.max.apply(null, all);
   var top = (fit && ac.any) ? ac.cap : niceMax(trueMax);
@@ -738,13 +743,21 @@ function chartIncomeExpense(container, keys, map, fit) {
     var x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
     var base = PT + ih;
 
-    var pair = [[a.income, x1, "var(--series-1)"], [a.expense, x2, "var(--series-2)"]];
-    var bothOver = a.income > top && a.expense > top;
+    var extra = oo[k] || 0;
+    var pair = [[a.income, x1, "var(--series-1)"], [a.expense + extra, x2, "var(--series-2)"]];
+    var bothOver = a.income > top && a.expense + extra > top;
     pair.forEach(function (b, j) {
       var val = b[0], bx = b[1];
       var over = val > top;
       var h = Math.min(val, top) / top * ih;
-      s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '"/>';
+      if (j === 1 && extra > 0) {
+        // everyday part solid, the one-off part stacked on top and faded
+        var he = Math.min(a.expense, top) / top * ih;
+        s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '" fill-opacity="0.32"/>' +
+             '<rect x="' + bx + '" y="' + (base - he) + '" width="' + bw + '" height="' + he + '" fill="' + b[2] + '"/>';
+      } else {
+        s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '"/>';
+      }
       if (over) {
         s += breakMark(bx, bw, PT);
         // When both bars overflow their labels would collide, so stagger them.
@@ -756,17 +769,20 @@ function chartIncomeExpense(container, keys, map, fit) {
 
     var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
       '<div class="t-row"><i class="swatch" style="background:var(--series-1)"></i>Income<b>' + money(a.income) + '</b></div>' +
-      '<div class="t-row"><i class="swatch" style="background:var(--series-2)"></i>Expenses<b>' + money(a.expense) + '</b></div>' +
+      '<div class="t-row"><i class="swatch" style="background:var(--series-2)"></i>' + (opts.oneOff || opts.everyday ? 'Everyday expenses' : 'Expenses') + '<b>' + money(a.expense) + '</b></div>' +
+      (extra ? '<div class="t-row"><i class="swatch" style="background:var(--series-2);opacity:.32"></i>One-off costs<b>' + money(extra) + '</b></div>' : '') +
       (a.invest ? '<div class="t-row"><i class="swatch" style="background:var(--muted)"></i>Invested (net)<b>' + money(a.invest) + '</b></div>' : '') +
       '<div class="t-row">Net<b>' + money(net(a)) + '</b></div>' +
       '<div class="t-row">Transactions<b>' + a.count + '</b></div>';
 
     // hit target wider than the marks
     s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih +
-         '" data-tip="' + esc(tip) + '"/>';
+         '" data-k="' + k + '" data-tip="' + esc(tip) + '"' + (opts.onPick ? ' style="cursor:pointer"' : '') + '/>';
 
-    s += '<text x="' + cx + '" y="' + (PT + ih + 19) + '" text-anchor="middle" font-size="11.5" fill="var(--muted)">' +
-         monthShort(k) + '</text>';
+    // every other month once they get tight, so the labels do not collide
+    if (band >= 30 || i % 2 === (keys.length - 1) % 2)
+      s += '<text x="' + cx + '" y="' + (PT + ih + 19) + '" text-anchor="middle" font-size="11.5" fill="var(--muted)">' +
+           monthShort(k) + '</text>';
     if (k.slice(5, 7) === "01" || i === 0) {
       s += '<text x="' + cx + '" y="' + (PT + ih + 32) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' +
            k.slice(0, 4) + '</text>';
@@ -779,7 +795,8 @@ function chartIncomeExpense(container, keys, map, fit) {
   container.innerHTML =
     '<div class="legend">' +
       '<span><i class="swatch" style="background:var(--series-1)"></i>Income</span>' +
-      '<span><i class="swatch" style="background:var(--series-2)"></i>Expenses</span>' +
+      '<span><i class="swatch" style="background:var(--series-2)"></i>' + (opts.oneOff || opts.everyday ? 'Everyday expenses' : 'Expenses') + '</span>' +
+      (opts.oneOff ? '<span><i class="swatch" style="background:var(--series-2);opacity:.32"></i>One-off costs</span>' : '') +
       (ac.any
         ? '<span style="margin-left:auto"><span class="seg">' +
             '<button id="ie-fit"  aria-pressed="' + !!fit + '">Typical range</button>' +
@@ -797,11 +814,16 @@ function chartIncomeExpense(container, keys, map, fit) {
   var wrap = container.querySelector(".chartwrap");
   attachTip(wrap, wrap.querySelector("svg"));
 
-  var fitBtn = el("ie-fit"), fullBtn = el("ie-full");
+  // looked up inside this chart: Overview and Monthly each draw one
+  var fitBtn = container.querySelector("#ie-fit"), fullBtn = container.querySelector("#ie-full");
+  var redraw = opts.rerender || renderOverview;
   if (fitBtn) {
-    fitBtn.addEventListener("click", function () { STATE.fitScale = true; renderOverview(); });
-    fullBtn.addEventListener("click", function () { STATE.fitScale = false; renderOverview(); });
+    fitBtn.addEventListener("click", function () { STATE.fitScale = true; redraw(); });
+    fullBtn.addEventListener("click", function () { STATE.fitScale = false; redraw(); });
   }
+  if (opts.onPick) wrap.querySelectorAll("rect.hit").forEach(function (r) {
+    r.addEventListener("click", function () { opts.onPick(r.getAttribute("data-k")); });
+  });
 }
 
 /*
@@ -3912,6 +3934,10 @@ function renderMonthly() {
       '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
     '</div>';
   host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
+    '<div class="card"><h2>Income vs expenses</h2><p class="cap">' + (STATE.mYear || 'All years') +
+      (OO ? '. Everyday expenses only: one-off costs are set aside' : '. All expenses, one-off costs included') +
+      '. Tap a month to open it below.</p>' +
+      '<div id="m-ie"></div></div>' +
     '<div class="card"><h2>Month by month</h2>' +
       '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.' +
         (OO ? ' <b>One-off costs are set aside</b>: Expenses and Net saved leave out moving costs, insurance premiums of ' +
@@ -3952,6 +3978,21 @@ function renderMonthly() {
     tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   });
   wireDetail(host);
+  if (el("m-ie")) {
+    var ik = shown.slice().reverse(), im = {};
+    ik.forEach(function (k) { im[k] = shownAgg(k, map[k], oo); });
+    // Set aside: the bars carry everyday spending only, so the chart visibly
+    // drops the one-offs and rescales (Vinod: "the graph should change")
+    chartIncomeExpense(el("m-ie"), ik, im, STATE.fitScale, {
+      everyday: OO,
+      rerender: renderMonthly,
+      onPick: function (k) {
+        STATE.mOpen[k] = true; renderMonthly();
+        var r = el("m-row-" + k);
+        if (r) r.scrollIntoView({ block: "start" });
+      }
+    });
+  }
   if (el("m-cat-chart")) {
     var ck = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; });
     var cr = catRows(STATE.mCat, STATE.mSub), cv = {};
