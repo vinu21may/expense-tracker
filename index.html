@@ -176,6 +176,11 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 .tax-row:hover td { background: var(--plane); }
 .tax-row .chev { display: inline-block; width: 12px; color: var(--muted); }
 .tax-detail td { background: var(--plane); }
+#tab-monthly tr.tax-row { scroll-margin-top: 110px; }
+/* on a phone the table scrolls sideways; keep the opened detail to the screen */
+@media (max-width: 699px) { .m-detail { position: sticky; left: 0; max-width: calc(100vw - 96px); } }
+.m-total td { border-top: 2px solid var(--grid); }
+.neg { color: var(--critical); }
 .tax-lines { max-width: 460px; margin: 0 0 4px 16px; }
 /* Assets: the today-vs-maturity box is wider than the three tax boxes beside it */
 .grid.k4w { grid-template-columns: 1fr 1fr; }
@@ -386,6 +391,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
+      <button role="tab" data-tab="monthly"   aria-selected="false">Monthly</button>
       <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
       <button role="tab" data-tab="tax"       aria-selected="false">Tax Planning</button>
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
@@ -400,6 +406,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   </header>
   <main>
     <section id="tab-overview"></section>
+    <section id="tab-monthly"  class="hide"></section>
     <section id="tab-spending" class="hide"></section>
     <section id="tab-txns"     class="hide"></section>
     <section id="tab-accounts" class="hide"></section>
@@ -424,7 +431,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v40";
+var APP_BUILD = "finances-shell-v41";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -970,7 +977,7 @@ function chartNet(container, keys, map, fit) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, mOpen: {}, mYear: "", tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -1369,14 +1376,14 @@ function renderOverview() {
       '<select id="ov-month">' + monthOptions(keys, STATE.month, false) + '</select></div>' +
     '</div>' +
 
-    '<div class="grid k4" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">Income</div><div class="val">' + money(a.income) + '</div>' + delta(a.income, prev && prev.income, true) + '</div>' +
-      '<div class="tile"><div class="lbl">Expenses</div><div class="val">' + money(a.expense) + '</div>' + delta(a.expense, prev && prev.expense, false) + '</div>' +
-      '<div class="tile"><div class="lbl">Net saved</div><div class="val">' + money(net(a)) + '</div>' +
+    '<div class="grid k4" id="ov-tiles" style="margin-bottom:16px">' +
+      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Income</div><div class="val">' + money(a.income) + '</div>' + delta(a.income, prev && prev.income, true) + '</div>' +
+      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Expenses</div><div class="val">' + money(a.expense) + '</div>' + delta(a.expense, prev && prev.expense, false) + '</div>' +
+      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Net saved</div><div class="val">' + money(net(a)) + '</div>' +
         '<div class="sub">' + (a.invest > 0 ? "after " + money(a.invest) + " newly invested"
           : a.invest < 0 ? "including " + money(-a.invest) + " drawn from savings"
           : "nothing newly invested this month") + '</div></div>' +
-      '<div class="tile"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
+      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
         '<div class="sub">' + a.count + ' transactions</div></div>' +
     '</div>' +
 
@@ -1405,6 +1412,8 @@ function renderOverview() {
 
   var host = el("tab-overview");
   host.innerHTML = html;
+  // the four tiles open this month on the Monthly tab
+  wireTiles(el("ov-tiles"), null, function () { openMonth(STATE.month); });
   var taxLink = el("ov-taxlink");
   if (taxLink) taxLink.addEventListener("click", function () { switchTab("tax"); });
   // tax rows open into their breakup in place; remembered while the app is open
@@ -3569,6 +3578,141 @@ function renderAmma() {
     '</div>';
 }
 
+/* Month by month: one row per month -- income, expenses, invested, net saved,
+   savings rate -- newest first, with a total row for the year shown. A row
+   opens in place into where that month's money came from and went. Same
+   numbers as the Overview tiles (monthsIndex / addTo), so the two always agree.
+   The Overview tiles land here with their month already open. */
+function monthDetail(k) {
+  var inc = {}, exp = {}, inv = [], big = [], n = 0;
+  DATA.txns.forEach(function (t) {
+    if (!charted(t) || monthKey(t.d) !== k) return;
+    n++;
+    if (t.t === "Income") { var nm = t.s || t.c || "Other"; inc[nm] = (inc[nm] || 0) + t.cr; }
+    else if (t.t === "Expense") { exp[t.c] = (exp[t.c] || 0) + t.db; if (t.db > 0) big.push(t); }
+    else if (t.t === "Savings" && (t.db || t.cr)) inv.push(t);
+  });
+  function ranked(m) {
+    return Object.keys(m).map(function (x) { return [x, m[x]]; })
+                 .filter(function (r) { return Math.abs(r[1]) >= 0.5; })
+                 .sort(function (a, b) { return b[1] - a[1]; });
+  }
+  var a = monthsIndex(DATA.txns).map[k] || blankAgg();
+  var incR = ranked(inc), expR = ranked(exp);
+  big.sort(function (x, y) { return y.db - x.db; });
+  function what(t) { return esc(t.n || t.ds); }
+
+  var incBox = '<div class="exit-box"><div class="lbl">Income</div><div class="v">' + money(a.income) + '</div>' +
+    (incR.length ? incR.map(function (r) { return kv(esc(r[0]), Math.round(r[1])); }).join("")
+                 : kvText('No income this month', '', 'note')) + '</div>';
+
+  var expBox = '<div class="exit-box"><div class="lbl">Expenses by category</div><div class="v">' + money(a.expense) + '</div>' +
+    (expR.length ? expR.map(function (r) {
+      var pct = a.expense > 0 ? Math.round(r[1] / a.expense * 100) : 0;
+      return '<div class="kv"><span>' + esc(r[0]) + ' <span class="muted">' + pct + '%</span></span><b>' + money(r[1]) + '</b></div>';
+    }).join("") : kvText('No expenses this month', '', 'note')) + '</div>';
+
+  var invBox = '<div class="exit-box"><div class="lbl">Invested</div><div class="v">' + signed(a.invest) + '</div>' +
+    (inv.length ? inv.map(function (t) {
+      return kv(dayLabel(t.d) + ' · ' + what(t), Math.round(t.db - t.cr));
+    }).join("") + kvText('A minus is money taken back out, such as an FD that matured', '', 'note')
+                : kvText('Nothing newly invested', '', 'note')) +
+    '<div class="kv total"><span>Net saved</span><b>' + signed(net(a)) + '</b></div>' +
+    kvText('Savings rate', (rate(a) * 100).toFixed(1) + '%') + '</div>';
+
+  var bigBox = big.length
+    ? '<div class="exit-box" style="margin-top:12px"><div class="lbl">Biggest expenses</div>' +
+        big.slice(0, 5).map(function (t) {
+          return kv(dayLabel(t.d) + ' · ' + what(t) + ' <span class="muted">' + esc(t.c) + '</span>', Math.round(t.db));
+        }).join("") + '</div>'
+    : '';
+
+  return '<div class="m-detail"><div class="grid k3" style="margin:6px 0 4px">' + incBox + expBox + invBox + '</div>' + bigBox +
+    '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">See all ' + n +
+    ' transactions for ' + monthLabel(k) + ' ›</button></p></div>';
+}
+
+function signed(n) { return n < 0 ? '−' + money(-n) : money(n); }
+
+function renderMonthly() {
+  var idx = monthsIndex(DATA.txns), keys = idx.keys, map = idx.map;
+  var years = [];
+  keys.forEach(function (k) { var y = k.slice(0, 4); if (years.indexOf(y) < 0) years.push(y); });
+  if (STATE.mYear && years.indexOf(STATE.mYear) < 0) STATE.mYear = "";
+  var shown = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; }).reverse();
+
+  var tot = blankAgg();
+  var body = shown.map(function (k) {
+    var a = map[k], open = !!STATE.mOpen[k], ns = net(a);
+    tot.income += a.income; tot.expense += a.expense; tot.invest += a.invest;
+    return '<tr class="tax-row" data-key="' + k + '" id="m-row-' + k + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
+        '<td style="white-space:nowrap"><span class="chev">' + (open ? '▾' : '▸') + '</span> <b>' + monthLabel(k) + '</b></td>' +
+        '<td class="num">' + money(a.income) + '</td>' +
+        '<td class="num">' + money(a.expense) + '</td>' +
+        '<td class="num">' + signed(a.invest) + '</td>' +
+        '<td class="num"><b class="' + (ns < 0 ? 'neg' : '') + '">' + signed(ns) + '</b></td>' +
+        '<td class="num">' + (a.income > 0 ? (rate(a) * 100).toFixed(1) + '%' : '—') + '</td>' +
+      '</tr>' +
+      '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + k + '"><td colspan="6">' +
+        (open ? monthDetail(k) : '') + '</td></tr>';
+  }).join("");
+
+  var yearOpts = '<option value="">All years</option>' + years.slice().reverse().map(function (y) {
+    return '<option value="' + y + '"' + (y === STATE.mYear ? ' selected' : '') + '>' + y + '</option>';
+  }).join("");
+
+  var host = el("tab-monthly");
+  host.innerHTML =
+    '<div class="filters">' +
+      '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
+    '</div>' +
+    '<div class="card"><h2>Month by month</h2>' +
+      '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.</p>' +
+      '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">Income</th><th class="num">Expenses</th>' +
+        '<th class="num">Invested</th><th class="num">Net saved</th><th class="num">Savings rate</th></tr></thead>' +
+      '<tbody>' + body +
+        '<tr class="m-total"><td><b>' + (STATE.mYear ? STATE.mYear + ' total' : 'All months') + '</b></td>' +
+          '<td class="num"><b>' + money(tot.income) + '</b></td><td class="num"><b>' + money(tot.expense) + '</b></td>' +
+          '<td class="num"><b>' + signed(tot.invest) + '</b></td><td class="num"><b>' + signed(net(tot)) + '</b></td>' +
+          '<td class="num"><b>' + (tot.income > 0 ? (rate(tot) * 100).toFixed(1) + '%' : '—') + '</b></td></tr>' +
+      '</tbody></table></div></div>';
+
+  function wireDetail(scope) {
+    scope.querySelectorAll(".m-txns").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        STATE.tMonth = b.getAttribute("data-m"); STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = "";
+        STATE.tSub = ""; STATE.tType = ""; STATE.tLimit = 200;
+        switchTab("txns");
+      });
+    });
+  }
+  host.querySelectorAll("tr.tax-row").forEach(function (tr) {
+    function toggle() {
+      var k = tr.getAttribute("data-key"), open = !STATE.mOpen[k];
+      STATE.mOpen[k] = open;
+      var d = host.querySelector('tr.tax-detail[data-for="' + k + '"]');
+      if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = monthDetail(k); wireDetail(d); }
+      d.hidden = !open;
+      tr.setAttribute("aria-expanded", open);
+      tr.querySelector(".chev").textContent = open ? "▾" : "▸";
+    }
+    tr.addEventListener("click", toggle);
+    tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  });
+  wireDetail(host);
+  el("m-year").addEventListener("change", function () { STATE.mYear = this.value; renderMonthly(); });
+}
+
+/* Overview tile -> Monthly tab, with that month open and scrolled to. */
+function openMonth(k) {
+  STATE.mOpen[k] = true;
+  if (STATE.mYear && STATE.mYear !== k.slice(0, 4)) STATE.mYear = "";
+  switchTab("monthly");
+  var r = el("m-row-" + k);
+  if (r) r.scrollIntoView({ block: "start" });
+}
+
 /* =====================================================================
    6. Shell wiring
    ===================================================================== */
@@ -3578,10 +3722,11 @@ function switchTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma", "invest"].forEach(function (t) {
+  ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma", "invest"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
+  if (name === "monthly")  renderMonthly();
   if (name === "spending") renderSpending();
   if (name === "txns")     renderTxns();
   if (name === "accounts" || name === "assets") renderAssets();
