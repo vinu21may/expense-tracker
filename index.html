@@ -432,10 +432,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   box-shadow: 0 0 0 2px var(--surface-1); }
 .mat-row.soon .mat-fill { background: var(--warning); }
 .mat-row.soon .mat-dot { background: var(--warning); }
-.mat-pay { color: var(--text-secondary); font-weight: 650; font-variant-numeric: tabular-nums; }
+/* Value now and at maturity, labelled, on their own line above each bar. */
+.mat-vals { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 2px 8px; margin-top: 3px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.mat-vals small { font-size: 11.5px; color: var(--muted); margin-right: 4px; }
+.mat-vals .arr { color: var(--muted); }
+.mat-pay { font-weight: 650; }
 /* An estimate is not dressed up as a figure you can bank: lighter, and the word
    "about" is in the text itself, so it survives being read aloud or copied. */
-.mat-pay.est { font-weight: 500; color: var(--muted); }
+.mat-pay.est { font-weight: 500; color: var(--text-secondary); }
+.mat-pay.none { font-weight: 500; color: var(--muted); }
 .mat-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid);
   font-size: 12.5px; color: var(--muted); }
 .muted { color: var(--muted); }
@@ -528,7 +534,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v50";
+var APP_BUILD = "finances-shell-v51";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2078,17 +2084,21 @@ function renderAssets() {
         var when = dayLabel(x.on) + " " + x.on.slice(0, 4);
         var pay = payout[when + "|" + x.value];
         var est = pay && isEstimate(pay.maturityWhy);
-        var payTxt = pay ? (est ? "about " : "") + money(pay.maturity) + " at maturity" : "";
+        var payTxt = pay ? (est ? "about " : "") + money(pay.maturity) : "";
 
         return '<div class="mat-row' + (years < 0.25 ? " soon" : "") + '" title="' +
             esc(x.name) + ' matures ' + when +
-            (pay ? ' — ' + esc(payTxt) + '. ' + esc(pay.maturityWhy || "") : "") + '">' +
+            ' — ' + money(x.value) + ' now' +
+            (pay ? ', ' + esc(payTxt) + ' at maturity. ' + esc(pay.maturityWhy || "") : "") + '">' +
           '<div class="mat-name">' + esc(x.name) + '</div>' +
           '<div class="mat-when">' + when + '</div>' +
-          '<div class="mat-sub">' + esc(x.kind) + ' · ' + money(x.value) + ' now' +
-            (pay ? ' <span class="mat-pay' + (est ? " est" : "") + '">→ ' + esc(payTxt) + '</span>' : "") +
-          '</div>' +
+          '<div class="mat-sub">' + esc(x.kind) + '</div>' +
           '<div class="mat-left">in ' + away + '</div>' +
+          '<div class="mat-vals"><span><small>Current value</small><b>' + money(x.value) + '</b></span>' +
+            '<span class="arr">→</span>' +
+            '<span><small>At maturity</small>' +
+              (pay ? '<span class="mat-pay' + (est ? " est" : "") + '">' + esc(payTxt) + '</span>'
+                   : '<span class="mat-pay none">not known</span>') + '</span></div>' +
           '<div class="mat-lane"><div class="mat-track"></div>' +
             '<div class="mat-grid">' + ticks + '</div>' +
             '<div class="mat-fill" style="width:' + p.toFixed(2) + '%"></div>' +
