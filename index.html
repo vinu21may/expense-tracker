@@ -535,7 +535,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v53";
+var APP_BUILD = "finances-shell-v54";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1942,7 +1942,9 @@ function renderAssets() {
         // the account number is what ties this row to an FD advice or a bank
         // statement, so it is worth the second line rather than a tooltip
         (f.acct ? '<div class="acct">' + esc(f.acct) + '</div>' : "") + '</td>' +
-      '<td class="num">' + money(f.principal) + '</td>' +
+      // value today, with what was put in and the interest so far underneath
+      '<td class="num">' + money(fdNow(f)) + '<div class="muted" style="font-size:12px">' +
+        money(f.principal) + ' + ' + money(fdNow(f) - f.principal) + '</div></td>' +
       '<td class="num">' + money(f.matAmt) + '<div class="muted" style="font-size:12px">+' + money(f.interest) + '</div></td>' +
       '<td>' + (f.maturity ? dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "—") + '</td>' +
       '<td>' + (matured ? '<span class="pill ok">matured</span>'
@@ -2387,9 +2389,9 @@ function renderAssets() {
         '<div class="sub">' + DATA.goals.length + ' goals tracked</div></div>' +
     '</div>' +
 
-    '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdTotal) + ' invested.</p>' +
+    '<div class="card"><h2>Fixed deposits</h2><p class="cap">' + money(fdValue) + ' today: ' + money(fdTotal) + ' put in plus ' + money(fdValue - fdTotal) + ' interest earned so far.</p>' +
       (fdHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Principal</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
+        ? '<div class="tbl-scroll"><table><thead><tr><th>FD</th><th class="num">Value today</th><th class="num">At maturity</th><th>Matures</th><th>Status</th></tr></thead><tbody>' + fdHtml + '</tbody></table></div>'
         : '<div class="empty">No fixed deposits.</div>') +
     '</div>' +
 
