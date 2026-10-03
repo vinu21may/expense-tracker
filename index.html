@@ -360,6 +360,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .goal-head .g-amt { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .bar { height: 10px; background: var(--grid); border-radius: 999px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--series-1); border-radius: 999px; }
+
+/* Asset mix: one ranked bar per holding. A single measure (what each is worth)
+   so it is one series in one hue — shading by rank would colour by position
+   rather than by the thing itself, and say nothing extra that length doesn't. */
+.amix { display: flex; flex-direction: column; gap: 14px; }
+.amix-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
+.amix-name { font-weight: 650; font-size: 14.5px; }
+.amix-val { font-weight: 700; font-size: 14.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amix-sub, .amix-pct { font-size: 12px; color: var(--muted); }
+.amix-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.amix-track { grid-column: 1 / -1; height: 9px; background: var(--grid);
+  border-radius: 999px; overflow: hidden; margin-top: 3px; }
+.amix-track > i { display: block; height: 100%; background: var(--seq-450);
+  border-radius: 999px; transition: width .5s ease; }
+.amix-row:hover .amix-track > i { background: var(--seq-500); }
+.amix-foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid);
+  display: flex; justify-content: space-between; font-size: 13.5px; }
+.amix-foot b { font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .empty { padding: 28px 4px; text-align: center; color: var(--muted); font-size: 14px; }
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
@@ -436,7 +454,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v47";
+var APP_BUILD = "finances-shell-v48";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1895,6 +1913,36 @@ function renderAssets() {
   // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
   var totalInvested = fdTotal + invValue;
 
+  // Every holding on one scale, biggest first. Fixed deposits at principal and
+  // investments at their last stated value — the same basis as the total above,
+  // so the bars add up to it. Cash is deliberately absent; it lives on Cash in Bank.
+  var mix = DATA.fds.map(function (f) {
+    return { name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
+             when: f.maturity ? "matures " + dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "",
+             value: f.principal };
+  }).concat(invs.map(function (i) {
+    return { name: i.name, kind: i.kind || "Investment",
+             when: i.valued ? "valued " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "",
+             value: i.value };
+  })).sort(function (a, b) { return b.value - a.value; });
+
+  var mixMax = mix.reduce(function (m, x) { return Math.max(m, x.value); }, 0);
+  var mixHtml = mix.length ? '<div class="amix">' + mix.map(function (x) {
+    var pct = totalInvested ? x.value / totalInvested * 100 : 0;
+    return '<div class="amix-row" title="' + esc(x.name) + ' — ' + money(x.value) +
+             ', ' + pct.toFixed(1) + '% of ' + money(totalInvested) + '">' +
+        '<div class="amix-name">' + esc(x.name) + '</div>' +
+        '<div class="amix-val">' + money(x.value) + '</div>' +
+        '<div class="amix-sub">' + esc(x.kind) + (x.when ? " · " + esc(x.when) : "") + '</div>' +
+        '<div class="amix-pct">' + pct.toFixed(1) + '%</div>' +
+        '<div class="amix-track"><i style="width:' +
+          (mixMax ? (x.value / mixMax * 100).toFixed(2) : 0) + '%"></i></div>' +
+      '</div>';
+  }).join("") + '</div>' +
+    '<div class="amix-foot"><span>' + mix.length + ' holdings</span>' +
+      '<span>Total <b>' + money(totalInvested) + '</b></span></div>'
+    : '<div class="empty">Nothing on the Fixed Deposits or Investments sheets yet.</div>';
+
   var emiP = activeEmis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = activeEmis.reduce(function (s, e) { return s + e.balI; }, 0);
 
@@ -2088,6 +2136,11 @@ function renderAssets() {
     '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Cash in Bank tab.</p>' +
     '</div>' +
+
+    '<div class="card"><h2>What your money is in</h2>' +
+      '<p class="cap">Every holding on one scale, biggest first. Each bar is that holding ' +
+      'against the largest; the percentage is its share of ' + money(totalInvested) + '.</p>' +
+      mixHtml + '</div>' +
 
     (exits.length
       ? '<div class="card"><h2>Cash in today, or hold to maturity</h2>' +
