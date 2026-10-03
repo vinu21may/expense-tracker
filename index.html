@@ -64,6 +64,34 @@
   }
 }
 
+/* Dark chosen explicitly, so it must win on a light phone too. CSS cannot share
+   one declaration block across a media-query boundary, so these are the same
+   tokens as above repeated — change one, change both. The block above still
+   handles "follow the phone", which is the default. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --plane:          #0d0d0d;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted:          #898781;
+  --grid:           #2c2c2a;
+  --baseline:       #383835;
+  --border:         rgba(255,255,255,0.10);
+  --series-1:       #3987e5;
+  --series-2:       #d95926;
+  --series-3:       #199e70;
+  --series-4:       #c98500;
+  --seq-500:        #3987e5;
+  --seq-450:        #2a78d6;
+  --seq-400:        #256abf;
+  --seq-350:        #1c5cab;
+  --seq-300:        #184f95;
+  --seq-250:        #104281;
+  --good-text:      #0ca30c;
+  --shadow:         0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -404,6 +432,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   box-shadow: 0 0 0 2px var(--surface-1); }
 .mat-row.soon .mat-fill { background: var(--warning); }
 .mat-row.soon .mat-dot { background: var(--warning); }
+.mat-pay { color: var(--text-secondary); font-weight: 650; font-variant-numeric: tabular-nums; }
+/* An estimate is not dressed up as a figure you can bank: lighter, and the word
+   "about" is in the text itself, so it survives being read aloud or copied. */
+.mat-pay.est { font-weight: 500; color: var(--muted); }
 .mat-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid);
   font-size: 12.5px; color: var(--muted); }
 .muted { color: var(--muted); }
@@ -411,6 +443,19 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
 .linkish { background: none; border: none; color: var(--series-1); font-size: 13px; padding: 6px; text-decoration: underline; min-height: 0; }
 </style>
+<script>
+/* Appearance is applied before the page paints, not after the app boots —
+   otherwise a dark-mode user gets a white flash on every launch. Kept tiny and
+   inline for that reason, and wrapped because Safari throws on localStorage in
+   a private window rather than returning null. */
+(function () {
+  var pref = "system";
+  try { pref = localStorage.getItem("theme") || "system"; } catch (e) {}
+  if (pref === "dark" || pref === "light") {
+    document.documentElement.setAttribute("data-theme", pref);
+  }
+})();
+</script>
 </head>
 <body>
 
@@ -437,6 +482,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <div class="hrow">
       <div class="brand">Finances</div>
       <div class="stamp" id="stamp"></div>
+      <button class="linkish" id="theme" title="Appearance: follow this device, light, or dark">Appearance</button>
       <button class="linkish" id="refresh">Refresh</button>
       <button class="linkish" id="signout">Sign out</button>
     </div>
@@ -482,7 +528,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v49";
+var APP_BUILD = "finances-shell-v50";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1976,6 +2022,19 @@ function renderAssets() {
   // axis running from today to the last maturity, so bar length is the wait.
   var MS_YEAR = 365.25 * 86400000;
   var nowMs = new Date(today).getTime();
+
+  // What each one pays at maturity, from the exit-value workings. Joined on the
+  // maturity date plus the book value rather than the name: the exit rows carry
+  // account numbers ("HDFC Bank FD1 (5030...)") that the sheets do not. Both
+  // must agree, so a duplicate book value cannot pull in the wrong row.
+  var payout = {};
+  (DATA.exitValues || []).forEach(function (x) {
+    if (x.maturity) payout[x.matures + "|" + x.book] = x;
+  });
+  // An amount that depends on markets or on staying employed is an estimate, and
+  // is marked as one; an FD's or a bond's is contractual and is not.
+  var isEstimate = function (why) { return /projection|market-linked|estimate/i.test(why || ""); };
+
   var dated = [], undatedHoldings = [];
   DATA.fds.forEach(function (f) {
     (f.maturity ? dated : undatedHoldings).push({
@@ -2016,11 +2075,19 @@ function renderAssets() {
         var months = Math.max(1, Math.round(years * 12));
         var away = months < 12 ? months + " month" + (months === 1 ? "" : "s")
                                : years.toFixed(1) + " years";
+        var when = dayLabel(x.on) + " " + x.on.slice(0, 4);
+        var pay = payout[when + "|" + x.value];
+        var est = pay && isEstimate(pay.maturityWhy);
+        var payTxt = pay ? (est ? "about " : "") + money(pay.maturity) + " at maturity" : "";
+
         return '<div class="mat-row' + (years < 0.25 ? " soon" : "") + '" title="' +
-            esc(x.name) + ' matures ' + dayLabel(x.on) + ' ' + x.on.slice(0, 4) + '">' +
+            esc(x.name) + ' matures ' + when +
+            (pay ? ' — ' + esc(payTxt) + '. ' + esc(pay.maturityWhy || "") : "") + '">' +
           '<div class="mat-name">' + esc(x.name) + '</div>' +
-          '<div class="mat-when">' + dayLabel(x.on) + " " + x.on.slice(0, 4) + '</div>' +
-          '<div class="mat-sub">' + esc(x.kind) + ' · ' + money(x.value) + '</div>' +
+          '<div class="mat-when">' + when + '</div>' +
+          '<div class="mat-sub">' + esc(x.kind) + ' · ' + money(x.value) + ' now' +
+            (pay ? ' <span class="mat-pay' + (est ? " est" : "") + '">→ ' + esc(payTxt) + '</span>' : "") +
+          '</div>' +
           '<div class="mat-left">in ' + away + '</div>' +
           '<div class="mat-lane"><div class="mat-track"></div>' +
             '<div class="mat-grid">' + ticks + '</div>' +
@@ -2238,7 +2305,8 @@ function renderAssets() {
     (matHtml
       ? '<div class="card"><h2>When each one matures</h2>' +
           '<p class="cap">The same holdings, by date. Each bar runs from today to that ' +
-          'maturity, so a longer bar is a longer wait. What each pays out is in the next card.</p>' +
+          'maturity, so a longer bar is a longer wait. Amounts shown as "about" depend on ' +
+          'markets or on staying employed — the workings are in the next card.</p>' +
           matHtml + '</div>'
       : "") +
 
@@ -4259,6 +4327,46 @@ function reloadApp() {
   if (navigator.serviceWorker) steps.push(navigator.serviceWorker.getRegistration().then(function (r) { return r && r.update(); }));
   Promise.all(steps).catch(function () {}).then(function () { location.reload(); });
 }
+
+/* Appearance: follow the device, or force light or dark. Three states rather
+   than a two-way switch, so "whatever my phone is doing" stays reachable once
+   you have touched it — that is the default and most people want it back. */
+var THEMES = ["system", "light", "dark"];
+var THEME_LABEL = { system: "Match device", light: "Light", dark: "Dark" };
+
+function themePref() {
+  try { return localStorage.getItem("theme") || "system"; } catch (e) { return "system"; }
+}
+
+function applyTheme(pref) {
+  if (pref === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", pref);
+  // the iOS status bar sits on this, so it has to track the resolved theme
+  var dark = pref === "dark" || (pref === "system" &&
+    window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", dark ? "#0d0d0d" : "#f9f9f7");
+  var btn = el("theme");
+  if (btn) {
+    btn.textContent = THEME_LABEL[pref];
+    btn.setAttribute("aria-label", "Appearance: " + THEME_LABEL[pref] + ". Tap to change.");
+  }
+}
+
+el("theme").addEventListener("click", function () {
+  var next = THEMES[(THEMES.indexOf(themePref()) + 1) % THEMES.length];
+  try { localStorage.setItem("theme", next); } catch (e) {}
+  applyTheme(next);
+});
+
+if (window.matchMedia) {
+  // while on "match device", follow the phone switching over at sunset
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+    if (themePref() === "system") applyTheme("system");
+  });
+}
+
+applyTheme(themePref());
 
 el("refresh").addEventListener("click", function () {
   var owner = localStorage.getItem(LS.owner), repo = localStorage.getItem(LS.repo), token = localStorage.getItem(LS.token);
