@@ -535,7 +535,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v52";
+var APP_BUILD = "finances-shell-v53";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1921,6 +1921,17 @@ function renderAssets() {
   }).join("") : '<div class="empty">No savings goals set.</div>';
 
   var fdTotal = DATA.fds.reduce(function (s, f) { return s + f.principal; }, 0);
+  // An FD's value today includes the interest it has earned so far. Grown
+  // geometrically from principal to the bank's own maturity amount, so it uses
+  // the bank's compounding without restating it, and lands exactly on matAmt.
+  var fdNow = function (f) {
+    if (!f.start || !f.maturity || !f.matAmt || !f.principal) return f.principal;
+    var t0 = new Date(f.start).getTime(), t1 = new Date(f.maturity).getTime();
+    var frac = Math.max(0, Math.min(1, (new Date(today).getTime() - t0) / Math.max(t1 - t0, 1)));
+    return Math.round(f.principal * Math.pow(f.matAmt / f.principal, frac));
+  };
+  // What the deposits are worth today: principal plus interest earned so far.
+  var fdValue = DATA.fds.reduce(function (s, f) { return s + fdNow(f); }, 0);
   var fdInt = DATA.fds.reduce(function (s, f) { return s + f.interest; }, 0);
   var fdHtml = DATA.fds.length ? DATA.fds.map(function (f) {
     var matured = f.maturity && f.maturity < today;
@@ -1969,8 +1980,8 @@ function renderAssets() {
     '</tr>';
   }).join("") : "";
 
-  // Fixed deposits at principal rather than maturity value, so the total is
-  // money actually put in rather than money hoped for.
+  // Fixed deposits at principal plus interest earned so far -- not maturity
+  // value, so the total is what is there today rather than money hoped for.
   //
   // Savings balances replaced "goals set aside" here. Goal money is not a
   // separate pot -- it sits in an account already counted, so adding it
@@ -1992,15 +2003,15 @@ function renderAssets() {
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
   // Savings-account cash is shown on the Cash in Bank tab, not counted here:
   // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
-  var totalInvested = fdTotal + invValue;
+  var totalInvested = fdValue + invValue;
 
-  // Every holding on one scale, biggest first. Fixed deposits at principal and
+  // Every holding on one scale, biggest first. Fixed deposits with interest so far and
   // investments at their last stated value — the same basis as the total above,
   // so the bars add up to it. Cash is deliberately absent; it lives on Cash in Bank.
   var mix = DATA.fds.map(function (f) {
     return { name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
              when: f.maturity ? "matures " + dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "",
-             value: f.principal };
+             value: fdNow(f) };
   }).concat(invs.map(function (i) {
     return { name: i.name, kind: i.kind || "Investment",
              when: i.valued ? "valued " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "",
@@ -2042,15 +2053,6 @@ function renderAssets() {
   // is marked as one; an FD's or a bond's is contractual and is not.
   var isEstimate = function (why) { return /projection|market-linked|estimate/i.test(why || ""); };
 
-  // An FD's value today includes the interest it has earned so far. Grown
-  // geometrically from principal to the bank's own maturity amount, so it uses
-  // the bank's compounding without restating it, and lands exactly on matAmt.
-  var fdNow = function (f) {
-    if (!f.start || !f.maturity || !f.matAmt || !f.principal) return f.principal;
-    var t0 = new Date(f.start).getTime(), t1 = new Date(f.maturity).getTime();
-    var frac = Math.max(0, Math.min(1, (nowMs - t0) / Math.max(t1 - t0, 1)));
-    return Math.round(f.principal * Math.pow(f.matAmt / f.principal, frac));
-  };
   var dated = [], undatedHoldings = [];
   DATA.fds.forEach(function (f) {
     var now = fdNow(f);
@@ -2312,12 +2314,12 @@ function renderAssets() {
         '<div class="val">' + money(totalInvested) + '</div></div>' +
       '<div class="parts">' +
         '<div class="part"><div class="p-lbl">Fixed deposits</div>' +
-          '<div class="p-val">' + money(fdTotal) + '</div></div>' +
+          '<div class="p-val">' + money(fdValue) + '</div></div>' +
         '<div class="part"><div class="p-lbl">Investments</div>' +
           '<div class="p-val">' + money(invValue) + '</div></div>' +
       '</div>' +
     '</div>' +
-    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal and investments at their last stated value. ' +
+    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal plus the interest earned so far (' + money(fdValue - fdTotal) + '), and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Cash in Bank tab.</p>' +
     '</div>' +
 
@@ -2369,8 +2371,8 @@ function renderAssets() {
       : '') +
 
     '<div class="grid k4" style="margin-bottom:16px">' +
-      '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdTotal) + '</div>' +
-        '<div class="sub">' + DATA.fds.length + ' deposits · ' + money(fdInt) + ' interest due</div></div>' +
+      '<div class="tile"><div class="lbl">In fixed deposits</div><div class="val">' + money(fdValue) + '</div>' +
+        '<div class="sub">' + money(fdTotal) + ' put in · ' + money(fdInt) + ' interest due in all</div></div>' +
       '<div class="tile"><div class="lbl">Investments value</div><div class="val">' + money(invValue) + '</div>' +
         '<div class="sub">' + (invs.length
           ? '<span class="' + (invGain >= 0 ? "up" : "down") + '">' + (invGain >= 0 ? "+" : "") + money(invGain) + '</span> on ' + money(invCost)
