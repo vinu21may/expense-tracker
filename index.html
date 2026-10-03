@@ -378,6 +378,34 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .amix-foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid);
   display: flex; justify-content: space-between; font-size: 13.5px; }
 .amix-foot b { font-variant-numeric: tabular-nums; }
+
+/* Maturity timeline: one lane per holding on a shared date axis, so the bar
+   length is time-to-maturity and the lanes are comparable down the column.
+   Dates sit in the row heading rather than floating on the lane — two
+   maturities two months apart would otherwise overlap their own labels. */
+.mat { display: flex; flex-direction: column; gap: 13px; }
+.mat-axis { position: relative; height: 16px; margin-bottom: 2px; }
+.mat-axis > span { position: absolute; top: 0; transform: translateX(-50%);
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mat-row { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; align-items: baseline; }
+.mat-name { font-weight: 650; font-size: 14px; }
+.mat-when { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mat-sub, .mat-left { font-size: 12px; color: var(--muted); }
+.mat-left { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mat-lane { grid-column: 1 / -1; position: relative; height: 10px; margin-top: 4px; }
+.mat-grid { position: absolute; inset: 0; }
+.mat-grid > u { position: absolute; top: -2px; bottom: -2px; width: 1px;
+  background: var(--grid); text-decoration: none; }
+.mat-track { position: absolute; inset: 0; background: var(--grid); border-radius: 999px; }
+.mat-fill { position: absolute; left: 0; top: 0; bottom: 0; min-width: 4px;
+  background: var(--seq-350); border-radius: 999px; }
+.mat-dot { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--seq-500); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--surface-1); }
+.mat-row.soon .mat-fill { background: var(--warning); }
+.mat-row.soon .mat-dot { background: var(--warning); }
+.mat-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid);
+  font-size: 12.5px; color: var(--muted); }
 .muted { color: var(--muted); }
 .empty { padding: 28px 4px; text-align: center; color: var(--muted); font-size: 14px; }
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
@@ -454,7 +482,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v48";
+var APP_BUILD = "finances-shell-v49";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1943,6 +1971,71 @@ function renderAssets() {
       '<span>Total <b>' + money(totalInvested) + '</b></span></div>'
     : '<div class="empty">Nothing on the Fixed Deposits or Investments sheets yet.</div>';
 
+  // --- maturity timeline -----------------------------------------------
+  // Same holdings, asking when rather than how much. Lanes share one date
+  // axis running from today to the last maturity, so bar length is the wait.
+  var MS_YEAR = 365.25 * 86400000;
+  var nowMs = new Date(today).getTime();
+  var dated = [], undatedHoldings = [];
+  DATA.fds.forEach(function (f) {
+    (f.maturity ? dated : undatedHoldings).push({
+      name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
+      value: f.principal, on: f.maturity });
+  });
+  invs.forEach(function (i) {
+    (i.matures ? dated : undatedHoldings).push({
+      name: i.name, kind: i.kind || "Investment", value: i.value, on: i.matures });
+  });
+  dated.sort(function (a, b) { return a.on < b.on ? -1 : a.on > b.on ? 1 : 0; });
+
+  var matHtml = "";
+  if (dated.length) {
+    var lastMs = new Date(dated[dated.length - 1].on).getTime();
+    var span = Math.max(lastMs - nowMs, MS_YEAR / 12);   // never divide by zero
+    var pos = function (iso) {
+      return Math.max(0, Math.min(100, (new Date(iso).getTime() - nowMs) / span * 100));
+    };
+
+    var ticks = "", labels = "";
+    for (var y = new Date(today).getFullYear() + 1;
+         y <= new Date(lastMs).getFullYear(); y++) {
+      var p = pos(y + "-01-01");
+      if (p <= 1 || p >= 99) continue;           // skip ticks that sit on an end
+      ticks += '<u style="left:' + p.toFixed(2) + '%"></u>';
+      // the gridline always goes in, the label only when it clears "Today" --
+      // a year starting a few weeks out would print straight through it
+      if (p >= 8) labels += '<span style="left:' + p.toFixed(2) + '%">' + y + '</span>';
+    }
+
+    matHtml = '<div class="mat"><div class="mat-axis"><span style="left:0;transform:none">Today</span>' +
+      labels + '</div>' +
+      dated.map(function (x) {
+        var p = pos(x.on);
+        var years = (new Date(x.on).getTime() - nowMs) / MS_YEAR;
+        // round to months first, so 11.6 months reads as a year rather than "12 months"
+        var months = Math.max(1, Math.round(years * 12));
+        var away = months < 12 ? months + " month" + (months === 1 ? "" : "s")
+                               : years.toFixed(1) + " years";
+        return '<div class="mat-row' + (years < 0.25 ? " soon" : "") + '" title="' +
+            esc(x.name) + ' matures ' + dayLabel(x.on) + ' ' + x.on.slice(0, 4) + '">' +
+          '<div class="mat-name">' + esc(x.name) + '</div>' +
+          '<div class="mat-when">' + dayLabel(x.on) + " " + x.on.slice(0, 4) + '</div>' +
+          '<div class="mat-sub">' + esc(x.kind) + ' · ' + money(x.value) + '</div>' +
+          '<div class="mat-left">in ' + away + '</div>' +
+          '<div class="mat-lane"><div class="mat-track"></div>' +
+            '<div class="mat-grid">' + ticks + '</div>' +
+            '<div class="mat-fill" style="width:' + p.toFixed(2) + '%"></div>' +
+            '<span class="mat-dot" style="left:' + p.toFixed(2) + '%"></span>' +
+          '</div></div>';
+      }).join("") + '</div>' +
+      (undatedHoldings.length
+        ? '<div class="mat-note"><b>Not on the timeline:</b> ' +
+            undatedHoldings.map(function (x) { return esc(x.name); }).join(", ") +
+            ' — ' + (undatedHoldings.length === 1 ? 'its maturity date is' : 'their maturity dates are') +
+            ' not known yet. Add them to the Investments sheet once the policy documents arrive.</div>'
+        : "");
+  }
+
   var emiP = activeEmis.reduce(function (s, e) { return s + e.balP; }, 0);
   var emiI = activeEmis.reduce(function (s, e) { return s + e.balI; }, 0);
 
@@ -2141,6 +2234,13 @@ function renderAssets() {
       '<p class="cap">Every holding on one scale, biggest first. Each bar is that holding ' +
       'against the largest; the percentage is its share of ' + money(totalInvested) + '.</p>' +
       mixHtml + '</div>' +
+
+    (matHtml
+      ? '<div class="card"><h2>When each one matures</h2>' +
+          '<p class="cap">The same holdings, by date. Each bar runs from today to that ' +
+          'maturity, so a longer bar is a longer wait. What each pays out is in the next card.</p>' +
+          matHtml + '</div>'
+      : "") +
 
     (exits.length
       ? '<div class="card"><h2>Cash in today, or hold to maturity</h2>' +
