@@ -437,6 +437,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   gap: 2px 8px; margin-top: 3px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .mat-vals small { font-size: 11.5px; color: var(--muted); margin-right: 4px; }
 .mat-vals .arr { color: var(--muted); }
+.mat-vals small.acc { margin: 0 0 0 4px; }
 .mat-pay { font-weight: 650; }
 /* An estimate is not dressed up as a figure you can bank: lighter, and the word
    "about" is in the text itself, so it survives being read aloud or copied. */
@@ -534,7 +535,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v51";
+var APP_BUILD = "finances-shell-v52";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2041,11 +2042,21 @@ function renderAssets() {
   // is marked as one; an FD's or a bond's is contractual and is not.
   var isEstimate = function (why) { return /projection|market-linked|estimate/i.test(why || ""); };
 
+  // An FD's value today includes the interest it has earned so far. Grown
+  // geometrically from principal to the bank's own maturity amount, so it uses
+  // the bank's compounding without restating it, and lands exactly on matAmt.
+  var fdNow = function (f) {
+    if (!f.start || !f.maturity || !f.matAmt || !f.principal) return f.principal;
+    var t0 = new Date(f.start).getTime(), t1 = new Date(f.maturity).getTime();
+    var frac = Math.max(0, Math.min(1, (nowMs - t0) / Math.max(t1 - t0, 1)));
+    return Math.round(f.principal * Math.pow(f.matAmt / f.principal, frac));
+  };
   var dated = [], undatedHoldings = [];
   DATA.fds.forEach(function (f) {
+    var now = fdNow(f);
     (f.maturity ? dated : undatedHoldings).push({
       name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
-      value: f.principal, on: f.maturity });
+      value: f.principal, now: now, accrued: now - f.principal, on: f.maturity });
   });
   invs.forEach(function (i) {
     (i.matures ? dated : undatedHoldings).push({
@@ -2088,13 +2099,16 @@ function renderAssets() {
 
         return '<div class="mat-row' + (years < 0.25 ? " soon" : "") + '" title="' +
             esc(x.name) + ' matures ' + when +
-            ' — ' + money(x.value) + ' now' +
+            ' — ' + money(x.now !== undefined ? x.now : x.value) + ' now' +
+            (x.accrued ? ' (' + money(x.value) + ' invested + ' + money(x.accrued) + ' interest so far)' : '') +
             (pay ? ', ' + esc(payTxt) + ' at maturity. ' + esc(pay.maturityWhy || "") : "") + '">' +
           '<div class="mat-name">' + esc(x.name) + '</div>' +
           '<div class="mat-when">' + when + '</div>' +
           '<div class="mat-sub">' + esc(x.kind) + '</div>' +
           '<div class="mat-left">in ' + away + '</div>' +
-          '<div class="mat-vals"><span><small>Current value</small><b>' + money(x.value) + '</b></span>' +
+          '<div class="mat-vals"><span><small>Current value</small><b>' +
+              money(x.now !== undefined ? x.now : x.value) + '</b>' +
+              (x.accrued ? ' <small class="acc">incl. ' + money(x.accrued) + ' interest so far</small>' : '') + '</span>' +
             '<span class="arr">→</span>' +
             '<span><small>At maturity</small>' +
               (pay ? '<span class="mat-pay' + (est ? " est" : "") + '">' + esc(payTxt) + '</span>'
