@@ -541,7 +541,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v56";
+var APP_BUILD = "finances-shell-v57";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2028,7 +2028,9 @@ function renderAssets() {
   var mix = DATA.fds.map(function (f) {
     return { name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
              when: f.maturity ? "matures " + dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "",
-             value: fdNow(f) };
+             // FD1/FD2 are already unique, but the deposit number is what the
+             // bank's own advices and certificates use, so it earns its place
+             ref: f.acct || "", value: fdNow(f) };
   }).concat(invs.map(function (i) {
     return { name: i.name, kind: i.kind || "Investment",
              when: i.valued ? "valued " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "",
@@ -2076,6 +2078,7 @@ function renderAssets() {
     var now = fdNow(f);
     (f.maturity ? dated : undatedHoldings).push({
       name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
+      ref: f.acct || "",
       value: f.principal, now: now, accrued: now - f.principal, on: f.maturity });
   });
   invs.forEach(function (i) {
