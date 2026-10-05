@@ -535,7 +535,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v54";
+var APP_BUILD = "finances-shell-v55";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2642,7 +2642,19 @@ function renderBills() {
   function daysTo(iso) { return Math.round((new Date(iso + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000); }
   function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
 
-  var bills = (DATA.bills || []).slice();
+  // a one-off (a card bill) that the morning check found paid is marked "Paid": gone
+  var allBills = DATA.bills || [];
+  var bills = allBills.filter(function (b) { return b.status !== "Paid"; });
+
+  // what the morning check (check_bills_paid.py) found paid, in the calendar or Mail
+  var paidLately = allBills.filter(function (b) { return b.lastPaid && daysTo(b.lastPaid) >= -14; })
+    .sort(function (a, b) { return a.lastPaid < b.lastPaid ? 1 : -1; });
+  // a sheet date already passed means this morning's check saw no payment for it;
+  // listed for 12 days, after which the check gives up and moves it on
+  var unpaid = bills.filter(function (b) {
+    return b.due && b.due < today && daysTo(b.due) >= -12 && b.amount != null &&
+           b.status !== "Check" && !/as used/i.test(b.every);
+  }).sort(function (a, b) { return a.due < b.due ? -1 : 1; });
 
   // insurance premiums, taken from the policies rather than listed twice --
   // only those paid from one of these accounts, so cover taken out of salary or
@@ -2797,6 +2809,19 @@ function renderBills() {
            longDate(isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(F)))) + '.', "bills-clear")
      : F === "amma" ? filterBar('Showing only what Amma repays.', "bills-clear") : '') +
 
+    (unpaid.length
+      ? '<div class="card" style="margin-bottom:16px"><h2>No payment seen yet</h2>' +
+          '<p class="cap">Past their due date, and this morning’s check found no payment in your calendar ' +
+          '(“Bill Paid” entries) or in the HDFC, Apple and biller emails. Paid already? It will be picked up tomorrow morning.</p>' +
+          '<div class="tbl-scroll"><table><tbody>' + unpaid.map(function (b) {
+            var late = -daysTo(b.due);
+            return '<tr><td style="white-space:nowrap">' + dayLabel(b.due) + '</td><td class="desc">' + esc(b.name) +
+              ' <span class="pill warn">' + late + (late === 1 ? ' day' : ' days') + ' ago</span></td>' +
+              '<td><span class="muted">' + esc(b.via) + '</span></td>' +
+              '<td class="num">' + (b.amountIs === "Exact" ? "" : "≈ ") + money(b.amount) + '</td></tr>';
+          }).join("") + '</tbody></table></div></div>'
+      : '') +
+
     '<div class="card" id="bills-timeline"><h2>' + (F === "15" || F === "30" ? 'Next ' + F + ' days' : F === "amma" ? 'Amma repays' : 'Next ' + BILL_DAYS + ' days') + '</h2>' +
       '<p class="cap">Every bill, subscription, card bill and premium due by ' + longDate(end) + '. ' +
         '≈ marks an estimate. Amounts in grey are left out of the totals: not known yet, or not certain to be charged.</p>' +
@@ -2805,6 +2830,17 @@ function renderBills() {
           '<th class="num">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<div class="empty">Nothing due.</div>') +
     '</div>' +
+
+    (paidLately.length
+      ? '<div class="card" style="margin-top:16px"><h2>Paid in the last 14 days</h2>' +
+          '<p class="cap">Found by the morning check in your calendar or Mail; each one has moved on to its next due date.</p>' +
+          '<div class="tbl-scroll"><table><tbody>' + paidLately.map(function (b) {
+            return '<tr><td style="white-space:nowrap">' + dayLabel(b.lastPaid) + '</td><td class="desc">' + esc(b.name) +
+              ' <span class="pill">paid</span><div class="muted" style="font-size:12.5px;margin-top:3px">' +
+              esc((b.paidHow || "").split(":")[0]) + (b.status === "Paid" ? '' : b.due ? ' · next ' + dayLabel(b.due) : '') + '</div></td>' +
+              '<td class="num">' + (b.lastAmount == null ? '' : money(b.lastAmount)) + '</td></tr>';
+          }).join("") + '</tbody></table></div></div>'
+      : '') +
 
     '<div class="grid k2" style="margin-top:16px">' +
       '<div class="card"><h2>By group</h2><p class="cap">Next ' + BILL_DAYS + ' days.</p>' +
