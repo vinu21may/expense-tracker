@@ -397,6 +397,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .amix-name { font-weight: 650; font-size: 14.5px; }
 .amix-val { font-weight: 700; font-size: 14.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .amix-sub, .amix-pct { font-size: 12px; color: var(--muted); }
+/* The policy or application number. Monospace with even digit widths because it
+   is read off and compared against a letter from HDFC, and dimmer than the rest
+   of the line so it identifies the row without competing with it. */
+.amix-ref { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums; font-size: 11px; opacity: .85;
+  white-space: nowrap; }
 .amix-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .amix-track { grid-column: 1 / -1; height: 9px; background: var(--grid);
   border-radius: 999px; overflow: hidden; margin-top: 3px; }
@@ -535,7 +541,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v55";
+var APP_BUILD = "finances-shell-v56";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2007,6 +2013,15 @@ function renderAssets() {
   // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
   var totalInvested = fdValue + invValue;
 
+  // Two Click 2 Invest Plus and two Sanchay Plus are now held, bought a few days
+  // apart, so the name alone no longer identifies a row. The policy number does —
+  // until a policy is issued that is still the application number, and the sheet
+  // says so in full ("App 1210... (policy no. pending)"), which is too long to
+  // repeat on every line.
+  var refLabel = function (r) {
+    return String(r || "").replace(/\s*\(policy no\.?\s*pending\)\s*/i, "").trim();
+  };
+
   // Every holding on one scale, biggest first. Fixed deposits with interest so far and
   // investments at their last stated value — the same basis as the total above,
   // so the bars add up to it. Cash is deliberately absent; it lives on Cash in Bank.
@@ -2017,7 +2032,7 @@ function renderAssets() {
   }).concat(invs.map(function (i) {
     return { name: i.name, kind: i.kind || "Investment",
              when: i.valued ? "valued " + dayLabel(i.valued) + " " + i.valued.slice(0, 4) : "",
-             value: i.value };
+             ref: refLabel(i.ref), value: i.value };
   })).sort(function (a, b) { return b.value - a.value; });
 
   var mixMax = mix.reduce(function (m, x) { return Math.max(m, x.value); }, 0);
@@ -2027,7 +2042,8 @@ function renderAssets() {
              ', ' + pct.toFixed(1) + '% of ' + money(totalInvested) + '">' +
         '<div class="amix-name">' + esc(x.name) + '</div>' +
         '<div class="amix-val">' + money(x.value) + '</div>' +
-        '<div class="amix-sub">' + esc(x.kind) + (x.when ? " · " + esc(x.when) : "") + '</div>' +
+        '<div class="amix-sub">' + esc(x.kind) + (x.when ? " · " + esc(x.when) : "") +
+          (x.ref ? ' · <span class="amix-ref">' + esc(x.ref) + '</span>' : "") + '</div>' +
         '<div class="amix-pct">' + pct.toFixed(1) + '%</div>' +
         '<div class="amix-track"><i style="width:' +
           (mixMax ? (x.value / mixMax * 100).toFixed(2) : 0) + '%"></i></div>' +
@@ -2064,7 +2080,8 @@ function renderAssets() {
   });
   invs.forEach(function (i) {
     (i.matures ? dated : undatedHoldings).push({
-      name: i.name, kind: i.kind || "Investment", value: i.value, on: i.matures });
+      name: i.name, kind: i.kind || "Investment", ref: refLabel(i.ref),
+      value: i.value, on: i.matures });
   });
   dated.sort(function (a, b) { return a.on < b.on ? -1 : a.on > b.on ? 1 : 0; });
 
@@ -2108,7 +2125,8 @@ function renderAssets() {
             (pay ? ', ' + esc(payTxt) + ' at maturity. ' + esc(pay.maturityWhy || "") : "") + '">' +
           '<div class="mat-name">' + esc(x.name) + '</div>' +
           '<div class="mat-when">' + when + '</div>' +
-          '<div class="mat-sub">' + esc(x.kind) + '</div>' +
+          '<div class="mat-sub">' + esc(x.kind) +
+            (x.ref ? ' · <span class="amix-ref">' + esc(x.ref) + '</span>' : "") + '</div>' +
           '<div class="mat-left">in ' + away + '</div>' +
           '<div class="mat-vals"><span><small>Current value</small><b>' +
               money(x.now !== undefined ? x.now : x.value) + '</b>' +
@@ -2125,7 +2143,11 @@ function renderAssets() {
       }).join("") + '</div>' +
       (undatedHoldings.length
         ? '<div class="mat-note"><b>Not on the timeline:</b> ' +
-            undatedHoldings.map(function (x) { return esc(x.name); }).join(", ") +
+            undatedHoldings.map(function (x) {
+              // bracketed here, not dot-separated: these run together in a sentence
+              return esc(x.name) +
+                (x.ref ? ' (<span class="amix-ref">' + esc(x.ref) + '</span>)' : "");
+            }).join(", ") +
             ' — ' + (undatedHoldings.length === 1 ? 'its maturity date is' : 'their maturity dates are') +
             ' not known yet. Add them to the Investments sheet once the policy documents arrive.</div>'
         : "");
