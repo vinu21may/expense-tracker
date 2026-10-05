@@ -1923,6 +1923,9 @@ function renderAssets() {
       '<div class="muted" style="font-size:12px;margin-top:6px">' +
         (g.date ? "Target " + dayLabel(g.date) + " " + g.date.slice(0, 4) : "No target date") +
         " · " + money(Math.max(0, g.target - g.saved)) + " to go" +
+        // a goal linked to its own account takes that account's balance
+        (g.linked ? '<br>Saved = ' + esc(g.linked) + ' balance' +
+          (g.linkedAsOf ? ' as of ' + dayLabel(g.linkedAsOf) + ' ' + g.linkedAsOf.slice(0, 4) : '') : '') +
       '</div></div>';
   }).join("") : '<div class="empty">No savings goals set.</div>';
 
