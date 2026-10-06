@@ -2181,10 +2181,41 @@ function renderAssets() {
     });
   })();
 
+  /* The month each loan's first instalment was billed.
+     Each "OFFUS EMI,PRIN NB:04,<loan>" posting carries its instalment number,
+     so instalment 4 billed in Oct 2026 means instalment 1 was billed in Jul.
+     A loan too new to have a posting falls back to its booking date: the
+     first instalment lands on the next statement, which is generated on the
+     5th, so a loan booked on the 1st-5th starts that month, later the next. */
+  var emiStart = {};
+  DATA.cc.forEach(function (c) {
+    var m = /OFFUSEMI,PRIN[A-Z]*:?(\d+),(\d+)\(Ref#/.exec(String(c.ds).replace(/\s+/g, ""));
+    if (!m) return;
+    var loan = m[2].replace(/^0+/, "");
+    var idx = Number(c.d.slice(0, 4)) * 12 + Number(c.d.slice(5, 7)) - 1 - (Number(m[1]) - 1);
+    if (emiStart[loan] === undefined || idx < emiStart[loan]) emiStart[loan] = idx;
+  });
+  function emiMonth(idx) {   // month index -> "YYYY-MM" for the shared monthLabel
+    return monthLabel(Math.floor(idx / 12) + "-" + String(idx % 12 + 1).padStart(2, "0"));
+  }
+  function emiSpan(e) {
+    var start = emiStart[String(e.loanNo).replace(/^0+/, "")];
+    if (start === undefined && /^\d{4}-\d{2}-\d{2}/.test(e.booked || "")) {
+      var b = e.booked;
+      start = Number(b.slice(0, 4)) * 12 + Number(b.slice(5, 7)) - 1 + (Number(b.slice(8, 10)) > 5 ? 1 : 0);
+    }
+    var n = parseInt(e.tenure, 10);
+    if (start === undefined) return { start: "—", end: "—" };
+    return { start: emiMonth(start), end: n ? emiMonth(start + n - 1) : "—" };
+  }
+
   var emiHtml = activeEmis.length ? activeEmis.map(function (e) {
     var monthly = emiMonthly[String(e.loanNo).replace(/^0+/, "")];
+    var span = emiSpan(e);
     return '<tr>' +
       '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">Card ' + esc(e.card) + " · " + esc(e.loanNo) + '</div></td>' +
+      '<td>' + esc(span.start) + '</td>' +
+      '<td>' + esc(span.end) + '</td>' +
       '<td class="num">' + money(e.amount) + '</td>' +
       '<td class="num">' + (monthly ? '<b>' + money(monthly) + '</b>' : '<span class="muted">—</span>') + '</td>' +
       '<td class="num">' + money(e.balP) + '</td>' +
@@ -2242,7 +2273,7 @@ function renderAssets() {
     '<div class="card"><h2>Credit card EMI loans</h2>' +
       '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
       (emiHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th>Started</th><th>Ends</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
         : '<div class="empty">No active EMI loans.</div>') +
     '</div>';
 
