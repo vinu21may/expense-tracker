@@ -506,7 +506,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <button role="tab" data-tab="tax"       aria-selected="false">Tax Planning</button>
       <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
       <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
-      <button role="tab" data-tab="accounts"  aria-selected="false">Cash in Bank</button>
+      <button role="tab" data-tab="accounts"  aria-selected="false">Bank &amp; Cards</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
@@ -541,7 +541,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v60";
+var APP_BUILD = "finances-shell-v61";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2008,7 +2008,7 @@ function renderAssets() {
   });
   var savingsTotal = savingsAccts.reduce(function (s, a) { return s + a.value; }, 0);
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
-  // Savings-account cash is shown on the Cash in Bank tab, not counted here:
+  // Savings-account cash is shown on the Bank & Cards tab, not counted here:
   // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
   var totalInvested = fdValue + invValue;
 
@@ -2023,7 +2023,7 @@ function renderAssets() {
 
   // Every holding on one scale, biggest first. Fixed deposits with interest so far and
   // investments at their last stated value — the same basis as the total above,
-  // so the bars add up to it. Cash is deliberately absent; it lives on Cash in Bank.
+  // so the bars add up to it. Cash is deliberately absent; it lives on Bank & Cards.
   var mix = DATA.fds.map(function (f) {
     return { name: f.id + (f.bank ? " · " + f.bank : ""), kind: "Fixed deposit",
              when: f.maturity ? "matures " + dayLabel(f.maturity) + " " + f.maturity.slice(0, 4) : "",
@@ -2378,7 +2378,7 @@ function renderAssets() {
       '</div>' +
     '</div>' +
     '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal plus the interest earned so far (' + money(fdValue - fdTotal) + '), and investments at their last stated value. ' +
-      'Cash in savings accounts is not counted here; it is on the Cash in Bank tab.</p>' +
+      'Cash in savings accounts is not counted here; it is on the Bank &amp; Cards tab.</p>' +
     '</div>' +
 
     '<div class="card"><h2>What your money is in</h2>' +
