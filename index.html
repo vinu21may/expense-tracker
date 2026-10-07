@@ -541,7 +541,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v57";
+var APP_BUILD = "finances-shell-v60";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1824,36 +1824,32 @@ function renderAssets() {
 
   var anyBalance = banks.some(function (a) { return a.balance !== null && a.balance !== undefined; });
 
-  /* One card per account. The headline is the balance NOW (stated balance plus
-     everything recorded since); the stated figure and its date sit underneath,
-     because a balance with no date is the thing that misleads. */
+  /* One card per account (Vinod, 7 Oct 2026). The headline is the balance on the
+     date of the account's latest ledger transaction: the closing balance of the
+     last statement imported, plus anything the ledger has recorded after that
+     statement's end date. The statement figure itself sits underneath, as the
+     bank printed it. */
+  function fullDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
   var bankHtml = banks.map(function (a) {
     var m = mov[a.name];
     var stated = (a.balance !== null && a.balance !== undefined);
     var since = stated ? movementSince(a.name, a.balanceAsOf) : null;
-    var projected = stated ? a.balance + since.in - since.out : null;
-    var net = since ? since.in - since.out : 0;
+    var current = stated ? a.balance + since.in - since.out : null;
+    var onDate = m && (!a.balanceAsOf || m.last > a.balanceAsOf) ? m.last : a.balanceAsOf;
 
     return '<div class="acct-card">' +
       '<div class="ac-name">' + esc(a.name) + '</div>' +
       '<div class="ac-sub">' + esc(a.bank || "") + '</div>' +
-      (projected !== null
-        ? '<div class="ac-val">' + money(projected) + '</div><div class="ac-val-lbl">balance now</div>'
-        : '<div class="ac-val muted">—</div><div class="ac-val-lbl">no balance entered</div>') +
+      (current !== null
+        ? '<div class="ac-val">' + money(current) + '</div><div class="ac-val-lbl">balance on ' +
+          (onDate ? fullDate(onDate) : "date not known") + '</div>'
+        : '<div class="ac-val muted">—</div><div class="ac-val-lbl">no statement balance yet</div>') +
       '<div class="ac-rows">' +
-        '<div class="ac-row"><span>Stated balance</span><span>' + (stated
+        '<div class="ac-row"><span>Last statement balance</span><span>' + (stated
           ? '<b>' + money(a.balance) + '</b>' +
-            (a.balanceAsOf ? ' <span class="muted">as of ' + dayLabel(a.balanceAsOf) + " " + a.balanceAsOf.slice(0, 4) + '</span>'
+            (a.balanceAsOf ? ' <span class="muted">to ' + fullDate(a.balanceAsOf) + '</span>'
                            : ' <span class="muted">no date given</span>')
           : '<span class="muted">not provided</span>') + '</span></div>' +
-        '<div class="ac-row"><span>Movement since</span><span>' + (stated && a.balanceAsOf
-          ? (since.n
-              ? '<span class="' + (net >= 0 ? "up" : "down") + '">' + money(net) + '</span>' +
-                ' <span class="muted">' + since.n + ' txns</span>'
-              : '<span class="muted">none</span>')
-          : '<span class="muted">—</span>') + '</span></div>' +
-        '<div class="ac-row"><span>Last transaction</span><span class="muted">' +
-          (m ? dayLabel(m.last) + " " + m.last.slice(0, 4) : "—") + '</span></div>' +
       '</div>' +
     '</div>';
   }).join("");
@@ -2244,8 +2240,8 @@ function renderAssets() {
           '<div class="p-val">' + money(savingsTotal - dueTotal) + '</div></div>' +
       '</div>' +
     '</div>' +
-    '<p class="cap" style="margin:14px 0 0">Bank balances as you last recorded them, adjusted for anything the ' +
-      'ledger has seen since; card amounts from the latest statements' +
+    '<p class="cap" style="margin:14px 0 0">Bank balances from the last statement imported, plus anything the ' +
+      'ledger has recorded since; card amounts from the latest statements' +
       (cards.length > cardsDue.length ? ' (' + (cards.length - cardsDue.length) + ' card' +
         (cards.length - cardsDue.length > 1 ? 's have' : ' has') + ' no statement amount yet)' : '') + '.' +
       (savingsMissing.length
@@ -2259,7 +2255,8 @@ function renderAssets() {
 
     '<div class="card"><h2>Bank accounts</h2>' +
       '<p class="cap">' + (anyBalance
-        ? 'Balance as you stated it, plus everything recorded since, giving the balance now.'
+        ? 'Balance on the date of each account\'s latest transaction, worked out from the closing balance ' +
+          'of the last statement imported plus anything recorded after it.'
         : 'No balances have been entered yet. Add <b>Current Balance</b> and <b>Balance As Of</b> ' +
           'columns to the Account Details sheet and they will appear here.') + '</p>' +
       '<div class="acct-cards">' + bankHtml + '</div></div>' +
