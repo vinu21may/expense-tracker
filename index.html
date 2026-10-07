@@ -544,7 +544,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v62";
+var APP_BUILD = "finances-shell-v63";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3589,9 +3589,9 @@ function renderSalary() {
      - an option whose lock-in runs past the chosen period is listed
        separately as "not a fit", with the reason.
    ===================================================================== */
-var RATES = { asOf: "2026-10-01", poQuarter: "Oct–Dec 2026", rbiUntil: "31 Dec 2026", rbiNext: "1 Jan 2027",
+var RATES = { asOf: "2026-10-07", poQuarter: "Oct–Dec 2026", rbiUntil: "31 Dec 2026", rbiNext: "1 Jan 2027",
   sav: 2.5, fd1: 6.25, fd3: 6.45, fd5: 6.40, po1: 6.9, po2: 7.0, po3: 7.1, po5: 7.5, mis: 7.4, nsc: 7.7, kvp: 7.5,
-  ppf: 7.1, scss: 8.2, rbi: 8.05, ec54: 5.25, bajaj: 6.95, shr12: 7.0, shr35: 7.6,
+  ppf: 7.1, scss: 8.2, rbi: 8.05, ec54: 5.25, bajaj: 7.75, shr12: 7.0, shr35: 7.5,
   arb: 6.4, liquid: 6.6, debt: 7.0 };
 var FIXED_KEYS = ["asOf", "poQuarter", "rbiUntil", "rbiNext", "sav", "fd1", "fd3", "fd5", "po1", "po2", "po3", "po5",
   "mis", "nsc", "kvp", "ppf", "scss", "rbi", "ec54", "bajaj", "shr12", "shr35"];
