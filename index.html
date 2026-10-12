@@ -309,6 +309,50 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 
 /* ---------------------------------------------------------------- charts */
 .chartwrap { position: relative; width: 100%; }
+
+/* ------------------------------------------------- Overview: split view */
+/* Wallet card, 14-day bars, category shortcuts and bills on the left; the
+   month's recent transactions on the right. Stacks on a phone. */
+.ov-split { display: grid; gap: 16px; margin-bottom: 16px; }
+.ov-split > * { min-width: 0; }
+.ov-left { display: grid; gap: 16px; align-content: start; }
+.ov-left > .card, .ov-left > .tile { margin-bottom: 0; }
+@media (min-width: 760px) { .ov-split { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; } }
+.wallet { background: #1f1e1d; color: #f0efec; border-radius: 18px; padding: 18px 20px; box-shadow: var(--shadow); }
+:root[data-theme="dark"] .wallet { background: #262624; border: 1px solid rgba(255,255,255,.10); }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .wallet { background: #262624; border: 1px solid rgba(255,255,255,.10); } }
+.wallet .w-tap { cursor: pointer; border-radius: 10px; touch-action: manipulation; }
+.wallet .w-tap:focus-visible { outline: 2px solid #85b7eb; outline-offset: 3px; }
+.wallet .w-lbl { display: flex; justify-content: space-between; font-size: 12.5px; color: #b4b2a9; font-weight: 600; }
+.wallet .w-lbl .go { color: #85b7eb; }
+.wallet .w-big { font-size: clamp(30px, 4.6vw, 40px); font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 2px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wallet .w-sub { font-size: 12.5px; color: #b4b2a9; }
+.wallet .w-month { border-radius: 0; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.12); }
+.wallet .w-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.wallet .w-cell { font-size: 12px; color: #b4b2a9; }
+.wallet .w-cell b { display: block; color: #f0efec; font-size: 16px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wallet .w-cell .dl { font-size: 11.5px; white-space: nowrap; }
+.wallet .dl.good { color: #5dcaa5; } .wallet .dl.bad { color: #f0997b; }
+@media (max-width: 420px) { .wallet .w-cells { grid-template-columns: 1fr 1fr; } }
+.ov-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.ov-chips::-webkit-scrollbar { display: none; }
+.ov-chips button { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 9px 14px; min-height: 44px; border-radius: 14px; font-size: 13px; font-weight: 600; text-align: left; box-shadow: var(--shadow); }
+.ov-chips button small { font-size: 12px; font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ov-chips button .bar { display: block; height: 3px; border-radius: 2px; background: var(--series-1); margin-top: 3px; }
+.ov-recent .r-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-top: 1px solid var(--grid); }
+.ov-recent .r-row:first-of-type { border-top: none; }
+.ov-recent .r-ic { width: 32px; height: 32px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; }
+.ov-recent .r-ic.exp { background: color-mix(in srgb, var(--series-2) 16%, transparent); color: var(--series-2); }
+.ov-recent .r-ic.inc { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good-text); }
+.ov-recent .r-ic.sav { background: color-mix(in srgb, var(--series-1) 16%, transparent); color: var(--series-1); }
+.ov-recent .r-txt { min-width: 0; flex: 1; }
+.ov-recent .r-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-recent .r-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-recent .r-amt { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ov-recent .r-amt.inc { color: var(--good-text); }
+.ov-recent .r-all { width: 100%; margin-top: 10px; font-size: 14px; }
 svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
 .tip {
   position: absolute; pointer-events: none; z-index: 30; opacity: 0;
@@ -544,7 +588,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v64";
+var APP_BUILD = "finances-shell-v65";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -682,6 +726,32 @@ function subMonthlyTotals(txns, cat, sub, keys) {
     if (k in map) map[k] += t.db;
   });
   return keys.map(function (k) { return map[k]; });
+}
+
+/* Cash in the bank accounts: each account's last stated statement balance plus
+   whatever the ledger has recorded after that statement's date. Only STATED
+   balances count (see renderAssets for why). The Bank & Cards tab and the
+   Overview wallet card both read this, so the two can never disagree. */
+function bankCash() {
+  function isCard(a) { return /credit/i.test(a.type || ""); }
+  var accts = (DATA.accounts || []).filter(function (a) { return !isCard(a); }).map(function (a) {
+    var stated = (a.balance !== null && a.balance !== undefined);
+    if (!stated) return { name: a.name, known: false, value: 0 };
+    var v = a.balance;
+    DATA.txns.forEach(function (x) {
+      if (x.ac === a.name && a.balanceAsOf && x.d > a.balanceAsOf) v += x.cr - x.db;
+    });
+    return { name: a.name, known: true, value: v };
+  });
+  var cardsDue = (DATA.accounts || []).filter(isCard).reduce(function (s, a) {
+    return s + (a.due !== null && a.due !== undefined ? a.due : 0);
+  }, 0);
+  return {
+    accounts: accts,
+    total: accts.reduce(function (s, a) { return s + a.value; }, 0),
+    missing: accts.filter(function (a) { return !a.known; }),
+    cardsDue: cardsDue
+  };
 }
 
 /*
@@ -1055,6 +1125,46 @@ function chartSubTrend(container, keys, vals, label, onPick) {
 }
 
 /* Net-position sparkline: monthly net, above/below zero. */
+/* Daily spending for a run of days, newest on the right and highlighted; the
+   rest in a quiet grey. One big day (a premium) is capped with a break mark
+   like the other charts, so the ordinary days stay readable. */
+function chartDaily(container, days) {
+  var W = chartWidth(container), H = 170, PL = 54, PR = 8, PT = 20, PB = 26;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var vals = days.map(function (d) { return d.total; });
+  var ac = axisCap(vals);
+  var hi = ac.any ? ac.cap : niceMax(Math.max.apply(null, vals.concat([0])));
+  var band = iw / days.length, bw = Math.max(6, Math.min(26, band - 10));
+  var base = PT + ih;
+  var s = '<line x1="' + PL + '" y1="' + base + '" x2="' + (W - PR) + '" y2="' + base + '" stroke="var(--baseline)" stroke-width="1"/>' +
+    '<line x1="' + PL + '" y1="' + PT + '" x2="' + (W - PR) + '" y2="' + PT + '" stroke="var(--grid)" stroke-width="1"/>' +
+    '<text x="' + (PL - 9) + '" y="' + (base + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">₹0</text>' +
+    '<text x="' + (PL - 9) + '" y="' + (PT + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' + moneyShort(hi) + '</text>';
+  days.forEach(function (d, i) {
+    var last = i === days.length - 1;
+    var over = d.total > hi;
+    var h = Math.min(d.total, hi) / hi * ih;
+    var x = PL + band * i + (band - bw) / 2;
+    s += '<path d="' + barUp(x, base - h, bw, h, 4) + '" fill="' + (last ? "var(--series-1)" : "var(--baseline)") + '"/>';
+    if (over) {
+      s += breakMark(x, bw, PT);
+      s += '<text x="' + (x + bw / 2) + '" y="' + (PT - 6) + '" text-anchor="middle" font-size="10" fill="var(--text-secondary)" font-weight="600">' + moneyShort(d.total) + '</text>';
+    }
+    var tip = '<div class="t-title">' + dayLabel(d.date) + '</div>' +
+      '<div class="t-row">Spent<b>' + money(d.total) + '</b></div>' +
+      d.top.map(function (t) { return '<div class="t-row">' + esc(t.name) + '<b>' + money(t.v) + '</b></div>'; }).join("");
+    s += '<rect class="hit" x="' + (PL + band * i) + '" y="' + PT + '" width="' + band + '" height="' + ih + '" data-tip="' + esc(tip) + '"/>';
+    if (last || i % 2 === (days.length - 1) % 2) {
+      s += '<text x="' + (PL + band * i + band / 2) + '" y="' + (H - 7) + '" text-anchor="middle" font-size="11" fill="' +
+        (last ? "var(--text-primary)" : "var(--muted)") + '"' + (last ? ' font-weight="700"' : '') + '>' + Number(d.date.slice(8, 10)) + '</text>';
+    }
+  });
+  container.innerHTML = '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Spending each day for the last ' + days.length + ' days">' + s + '</svg></div>';
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+}
+
 function chartNet(container, keys, map, fit) {
   var W = chartWidth(container), H = 150, PL = 62, PR = 12, PT = 18, PB = 26;
   var iw = W - PL - PR, ih = H - PT - PB;
@@ -1495,6 +1605,67 @@ function renderOverview() {
     return '<div class="sub ' + (good ? "up" : "down") + '">' + arrow + " " +
            Math.abs(pct).toFixed(1) + "% vs " + monthLabel(keys[pos - 1]) + "</div>";
   }
+  // the wallet card's small change line: arrow and percent only, coloured good/bad
+  function wDelta(cur, was, goodWhenUp) {
+    if (!was || was === 0) return '<span class="dl">&nbsp;</span>';
+    var pct = (cur - was) / Math.abs(was) * 100, up = pct >= 0;
+    return '<span class="dl ' + ((goodWhenUp ? up : !up) ? "good" : "bad") + '">' + (up ? "↑ " : "↓ ") +
+      Math.abs(pct).toFixed(0) + '%</span>';
+  }
+
+  // ---- wallet card: cash in bank now, and the chosen month
+  var cash = bankCash();
+  var known = cash.accounts.filter(function (x) { return x.known; }).length;
+  var prevLbl = pos > 0 ? MONTH_NAMES[+keys[pos - 1].slice(5, 7) - 1] : "";
+
+  // ---- the last 14 days of spending, ending at the newest entry in this month
+  var lastDay = "";
+  DATA.txns.forEach(function (t) { if (monthKey(t.d) === STATE.month && t.d > lastDay) lastDay = t.d; });
+  var days = [];
+  if (lastDay) {
+    var d0 = new Date(lastDay + "T00:00:00"), byDay = {};
+    for (var i = 13; i >= 0; i--) {
+      var iso = isoDate(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() - i));
+      byDay[iso] = { date: iso, total: 0, items: {} };
+      days.push(byDay[iso]);
+    }
+    DATA.txns.forEach(function (t) {
+      var b = byDay[t.d];
+      if (!b || !charted(t) || t.t !== "Expense") return;
+      b.total += t.db;
+      var nm = t.n || t.s || t.c;
+      b.items[nm] = (b.items[nm] || 0) + t.db;
+    });
+    days.forEach(function (b) {
+      b.top = Object.keys(b.items).map(function (k) { return { name: k, v: b.items[k] }; })
+        .sort(function (x, y) { return y.v - x.v; }).slice(0, 3);
+    });
+  }
+  var spent14 = days.reduce(function (s, b) { return s + b.total; }, 0);
+
+  // ---- bills in the next 15 days (the Bills tab's own 15-day filter)
+  var today = isoDate(new Date());
+  var bEnd = isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 15));
+  var sched = billSchedule(today, bEnd);
+  var due = sched.occ.filter(function (o) { return o.counted; });
+  var dueTotal = due.reduce(function (s, o) { return s + o.amount; }, 0);
+
+  // ---- recent: this month's entries, newest first (transfers between own accounts left out)
+  var recent = DATA.txns.filter(function (t) {
+    return monthKey(t.d) === STATE.month && charted(t) && t.t !== "Transfer";
+  }).sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : (b.row || 0) - (a.row || 0); });
+  var recentShown = recent.slice(0, 12);
+  function recentRow(t) {
+    var kind = t.t === "Income" ? "inc" : t.t === "Savings" ? "sav" : "exp";
+    var name = t.n || t.s || t.c || "—";
+    var amt = t.t === "Income" ? "+" + money(t.cr)
+            : t.t === "Savings" ? (t.db >= t.cr ? money(t.db - t.cr) : "+" + money(t.cr - t.db))
+            : "−" + money(t.db);
+    return '<div class="r-row"><span class="r-ic ' + kind + '" aria-hidden="true">' + esc((t.c || "?").charAt(0)) + '</span>' +
+      '<div class="r-txt"><div class="r-name">' + esc(name) + '</div>' +
+      '<div class="r-meta">' + dayLabel(t.d) + ' · ' + esc(t.c || "") + (t.t === "Savings" ? " · invested" : "") + '</div></div>' +
+      '<span class="r-amt' + (kind === "inc" ? " inc" : "") + '">' + amt + '</span></div>';
+  }
 
   var last12 = keys.slice(-12);
   var yr = STATE.month.slice(0, 4);
@@ -1515,15 +1686,51 @@ function renderOverview() {
       '<select id="ov-month">' + monthOptions(keys, STATE.month, false) + '</select></div>' +
     '</div>' +
 
-    '<div class="grid k4" id="ov-tiles" style="margin-bottom:16px">' +
-      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Income</div><div class="val">' + money(a.income) + '</div>' + delta(a.income, prev && prev.income, true) + '</div>' +
-      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Expenses</div><div class="val">' + money(a.expense) + '</div>' + delta(a.expense, prev && prev.expense, false) + '</div>' +
-      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Net saved</div><div class="val">' + money(net(a)) + '</div>' +
-        '<div class="sub">' + (a.invest > 0 ? "after " + money(a.invest) + " newly invested"
-          : a.invest < 0 ? "including " + money(-a.invest) + " drawn from savings"
-          : "nothing newly invested this month") + '</div></div>' +
-      '<div class="tile click" role="button" tabindex="0"><div class="lbl">Savings rate</div><div class="val">' + (rate(a) * 100).toFixed(1) + '%</div>' +
-        '<div class="sub">' + a.count + ' transactions</div></div>' +
+    '<div class="ov-split">' +
+      '<div class="ov-left">' +
+        '<div class="wallet">' +
+          '<div class="w-tap" id="ov-cash" role="button" tabindex="0">' +
+            '<div class="w-lbl"><span>Cash in bank · ' + known + ' account' + (known === 1 ? '' : 's') + '</span><span class="go">Bank &amp; Cards ›</span></div>' +
+            '<div class="w-big">' + money(cash.total) + '</div>' +
+            '<div class="w-sub">' + (cash.cardsDue ? money(cash.total - cash.cardsDue) + ' after ' + money(cash.cardsDue) + ' of card bills' : 'No card bills outstanding') +
+              (cash.missing.length ? ' · ' + cash.missing.length + ' account' + (cash.missing.length > 1 ? 's' : '') + ' with no balance yet' : '') + '</div>' +
+          '</div>' +
+          '<div class="w-tap w-month" id="ov-mon" role="button" tabindex="0">' +
+            '<div class="w-lbl"><span>' + monthLabel(STATE.month) + (prevLbl ? ' · vs ' + prevLbl : '') + '</span><span class="go">Monthly ›</span></div>' +
+            '<div class="w-cells">' +
+              '<div class="w-cell">Income<b>' + moneyShort(a.income) + '</b>' + wDelta(a.income, prev && prev.income, true) + '</div>' +
+              '<div class="w-cell">Spent<b>' + moneyShort(a.expense) + '</b>' + wDelta(a.expense, prev && prev.expense, false) + '</div>' +
+              '<div class="w-cell">Invested<b>' + (a.invest < 0 ? '−' + moneyShort(-a.invest) : moneyShort(a.invest)) + '</b><span class="dl">' + (a.invest < 0 ? 'drawn down' : '&nbsp;') + '</span></div>' +
+              '<div class="w-cell">Saved<b>' + (rate(a) * 100).toFixed(0) + '%</b><span class="dl">' + moneyShort(net(a)) + '</span></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        (days.length
+          ? '<div class="card"><h2>Spending, last 14 days</h2><p class="cap" style="margin-bottom:8px">' + money(spent14) +
+              ' to ' + dayLabel(lastDay) + ' · about ' + money(spent14 / 14) + ' a day. Tap a bar for that day.</p><div id="c-daily"></div></div>'
+          : '') +
+
+        (cats.length
+          ? '<div class="ov-chips" id="ov-chips">' + cats.slice(0, 6).map(function (c) {
+              return '<button type="button" data-cat="' + esc(c.name) + '">' + esc(c.name) + '<small>' + money(c.value) + '</small>' +
+                '<span class="bar" style="width:' + Math.max(8, Math.round(c.value / cats[0].value * 100)) + '%"></span></button>';
+            }).join("") + '</div>'
+          : '') +
+
+        '<div class="tile click" id="ov-bills" role="button" tabindex="0"><div class="lbl">Bills due in 15 days</div>' +
+          '<div class="val">' + money(dueTotal) + '</div>' +
+          '<div class="sub">' + (due.length
+            ? due.length + ' payment' + (due.length > 1 ? 's' : '') + ' · next: ' + esc(due[0].b.name) + ' on ' + dayLabel(due[0].date)
+            : 'Nothing due') +
+            (sched.unpaid.length ? ' <span class="pill warn">' + sched.unpaid.length + ' not yet seen paid</span>' : '') + '</div></div>' +
+      '</div>' +
+
+      '<div class="card ov-recent"><h2>Recent in ' + monthLabel(STATE.month) + '</h2>' +
+        '<p class="cap" style="margin-bottom:6px">' + recent.length + ' entries, newest first. Transfers between your own accounts are left out.</p>' +
+        (recentShown.length ? recentShown.map(recentRow).join("") : '<p class="muted">Nothing recorded this month yet.</p>') +
+        (recent.length > recentShown.length ? '<button type="button" class="r-all" id="ov-all">See all ' + recent.length + ' in Transactions</button>' : '') +
+      '</div>' +
     '</div>' +
 
     taxOverviewCard() +
@@ -1551,8 +1758,25 @@ function renderOverview() {
 
   var host = el("tab-overview");
   host.innerHTML = html;
-  // the four tiles open this month on the Monthly tab
-  wireTiles(el("ov-tiles"), null, function () { openMonth(STATE.month); });
+  // wallet card: the balance opens Bank & Cards, the month row opens Monthly
+  function tap(node, go) {
+    if (!node) return;
+    node.addEventListener("click", go);
+    node.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  }
+  tap(el("ov-cash"), function () { switchTab("accounts"); });
+  tap(el("ov-mon"), function () { openMonth(STATE.month); });
+  tap(el("ov-bills"), function () { STATE.billFilter = "15"; switchTab("bills"); });
+  if (el("ov-all")) el("ov-all").addEventListener("click", function () {
+    STATE.tq = ""; STATE.tAcct = ""; STATE.tCat = ""; STATE.tSub = ""; STATE.tType = "";
+    STATE.tMonth = STATE.month; switchTab("txns");
+  });
+  if (el("ov-chips")) el("ov-chips").querySelectorAll("button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      STATE.spendCat = b.getAttribute("data-cat"); STATE.spendSub = null; STATE.spendScope = "month"; switchTab("spending");
+    });
+  });
+  if (el("c-daily")) chartDaily(el("c-daily"), days);
   var taxLink = el("ov-taxlink");
   if (taxLink) taxLink.addEventListener("click", function () { switchTab("tax"); });
   // tax rows open into their breakup in place; remembered while the app is open
@@ -2003,12 +2227,7 @@ function renderAssets() {
   // touched the bank (cash, opening balances, the net-share row of a split
   // bill). An account with no stated balance is left out of the total and
   // called out below, rather than being guessed at.
-  var savingsAccts = banks.map(function (a) {
-    var stated = (a.balance !== null && a.balance !== undefined);
-    if (!stated) return { name: a.name, known: false, value: 0 };
-    var since = movementSince(a.name, a.balanceAsOf);
-    return { name: a.name, known: true, value: a.balance + since.in - since.out };
-  });
+  var savingsAccts = bankCash().accounts;
   var savingsTotal = savingsAccts.reduce(function (s, a) { return s + a.value; }, 0);
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
   // Savings-account cash is shown on the Bank & Cards tab, not counted here:
@@ -2694,13 +2913,10 @@ function billDates(start, every, from, to) {
   return out;
 }
 
-function renderBills() {
-  var now = new Date(), today = isoDate(now);
-  var end = isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + BILL_DAYS));
-  var far = isoDate(new Date(now.getFullYear() + 3, now.getMonth(), now.getDate()));
+/* What falls due from today to `end`: the Bills tab and the Overview tile both
+   read this, so the two can never disagree. */
+function billSchedule(today, end) {
   function daysTo(iso) { return Math.round((new Date(iso + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000); }
-  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
-
   // a one-off (a card bill) that the morning check found paid is marked "Paid": gone
   var allBills = DATA.bills || [];
   var bills = allBills.filter(function (b) { return b.status !== "Paid"; });
@@ -2742,6 +2958,19 @@ function renderBills() {
     });
   });
   occ.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.b.name.localeCompare(b.b.name); });
+  return { allBills: allBills, bills: bills, paidLately: paidLately, unpaid: unpaid, occ: occ };
+}
+
+function renderBills() {
+  var now = new Date(), today = isoDate(now);
+  var end = isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + BILL_DAYS));
+  var far = isoDate(new Date(now.getFullYear() + 3, now.getMonth(), now.getDate()));
+  function daysTo(iso) { return Math.round((new Date(iso + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000); }
+  function longDate(d) { return dayLabel(d) + " " + d.slice(0, 4); }
+
+  var sched = billSchedule(today, end);
+  var allBills = sched.allBills, bills = sched.bills, paidLately = sched.paidLately,
+      unpaid = sched.unpaid, occ = sched.occ;
 
   function sum(list) { return list.reduce(function (s, o) { return s + (o.counted ? o.amount : 0); }, 0); }
   var total = sum(occ);
