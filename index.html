@@ -588,7 +588,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v67";
+var APP_BUILD = "finances-shell-v68";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1835,78 +1835,10 @@ function renderSpending() {
 
   var months = scopeMonth ? 1 : keys.length;
 
-  /* A chosen category (from an Overview chip, the picker or a bar) -- or a
-     chosen sub-category -- gets a six-month comparison: the months up to the one chosen, as columns, with its
-     biggest sub-categories underneath so the change can be traced. The month
-     still under way is marked "so far". */
-  var six = "", sixKeys = [], sixVals = [];
-  if (STATE.spendCat) {
-    var endPos = keys.indexOf(STATE.month);
-    sixKeys = keys.slice(Math.max(0, endPos - 5), endPos + 1);
-    var bySub = {}, tot = {}, stats = {};
-    sixKeys.forEach(function (k) { tot[k] = 0; });
-    DATA.txns.forEach(function (t) {
-      if (!charted(t) || t.t !== "Expense" || t.c !== STATE.spendCat) return;
-      if (STATE.spendSub && t.s !== STATE.spendSub) return;
-      var k = monthKey(t.d);
-      if (!(k in tot)) return;
-      tot[k] += t.db;
-      if (!stats[k]) stats[k] = { n: 0, big: null };
-      stats[k].n++;
-      if (!stats[k].big || t.db > stats[k].big.db) stats[k].big = t;
-      var sb = t.s || "Other";
-      if (!bySub[sb]) bySub[sb] = {};
-      bySub[sb][k] = (bySub[sb][k] || 0) + t.db;
-    });
-    sixVals = sixKeys.map(function (k) { return tot[k]; });
-    var curK = sixKeys[sixKeys.length - 1], cur = tot[curK];
-    var before = sixKeys.slice(0, -1);
-    var avg = before.length ? before.reduce(function (s, k) { return s + tot[k]; }, 0) / before.length : 0;
-    var underway = curK === isoDate(new Date()).slice(0, 7);
-    var subNames = Object.keys(bySub).map(function (n) {
-      return { n: n, v: sixKeys.reduce(function (s, k) { return s + (bySub[n][k] || 0); }, 0) };
-    }).sort(function (a, b) { return b.v - a.v; });
-    var topSubs = subNames.slice(0, 5), restSubs = subNames.slice(5);
-    function cell(v) { return v ? money(v) : '<span class="muted">—</span>'; }
-    var head = '<tr><th>' + (STATE.spendSub ? '' : 'Sub-category') + '</th>' + sixKeys.map(function (k) {
-      return '<th class="num">' + monthShort(k) + (k === curK && underway ? '<br><span class="muted" style="font-weight:400">so far</span>' : '') + '</th>';
-    }).join("") + '</tr>';
-    var rows = topSubs.map(function (r) {
-      return '<tr><td>' + esc(r.n) + '</td>' + sixKeys.map(function (k) { return '<td class="num">' + cell(bySub[r.n][k]) + '</td>'; }).join("") + '</tr>';
-    }).join("");
-    if (restSubs.length) rows += '<tr><td class="muted">' + restSubs.length + ' other' + (restSubs.length > 1 ? 's' : '') + '</td>' +
-      sixKeys.map(function (k) {
-        return '<td class="num">' + cell(restSubs.reduce(function (s, r) { return s + (bySub[r.n][k] || 0); }, 0)) + '</td>';
-      }).join("") + '</tr>';
-    rows += '<tr class="m-total"><td><b>Total</b></td>' + sixKeys.map(function (k) { return '<td class="num"><b>' + money(tot[k]) + '</b></td>'; }).join("") + '</tr>';
-    // A sub-category has nothing finer to split into, so its table shows how the
-    // month's spending was made up instead: how many entries, their size, the biggest.
-    if (STATE.spendSub) {
-      function statRow(lbl, f) {
-        return '<tr><td>' + lbl + '</td>' + sixKeys.map(function (k) {
-          return '<td class="num">' + (stats[k] ? f(stats[k], k) : '<span class="muted">—</span>') + '</td>';
-        }).join("") + '</tr>';
-      }
-      rows = '<tr class="m-total" style="border:none"><td><b>Spent</b></td>' + sixKeys.map(function (k) { return '<td class="num"><b>' + cell(tot[k]) + '</b></td>'; }).join("") + '</tr>' +
-        statRow('Entries', function (x) { return x.n; }) +
-        statRow('Average entry', function (x, k) { return money(tot[k] / x.n); }) +
-        statRow('Biggest entry', function (x) {
-          return money(x.big.db) + '<div class="muted" style="font-size:11.5px;font-weight:400;max-width:120px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' +
-            esc(x.big.n || x.big.ds) + '">' + dayLabel(x.big.d) + (x.big.n ? ' · ' + esc(x.big.n) : '') + '</div>';
-        });
-    }
-    var diff = avg ? (cur - avg) / avg * 100 : null;
-    six = '<div class="card" id="s-six"><h2>' + esc(STATE.spendCat) + (STATE.spendSub ? ' › ' + esc(STATE.spendSub) : '') + ', last ' + sixKeys.length + ' months</h2>' +
-      '<p class="cap">' + monthLabel(curK) + (underway ? ' so far' : '') + ': <b>' + (cur ? money(cur) : 'nothing spent') + '</b>' +
-        (diff !== null && (underway || !cur) ? ' · the ' + before.length + ' months before averaged ' + money(avg) + ' a month'
-        : diff === null ? (before.length ? ' · nothing in the ' + before.length + ' months before' : '') : ' · ' + (Math.abs(diff) < 0.5 ? 'about the same as'
-          : '<span class="' + (diff > 0 ? 'neg' : '') + '" style="' + (diff > 0 ? '' : 'color:var(--good-text)') + '">' +
-            Math.abs(diff).toFixed(0) + '% ' + (diff > 0 ? 'above' : 'below') + '</span>') +
-          ' the ' + money(avg) + ' average of the ' + before.length + ' months before') + '.</p>' +
-      '<div id="s-six-chart"></div>' +
-      '<div class="tbl-scroll" style="margin-top:12px"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
-    '</div>';
-  }
+  /* A chosen category or sub-category gets the shared six-month comparison
+     (sixMonthCard), ending at the month chosen above. */
+  var sixCard = STATE.spendCat ? sixMonthCard(STATE.spendCat, STATE.spendSub, STATE.month, keys, "s-six") : null;
+  var six = sixCard ? sixCard.html : "";
 
   var html =
     '<div class="filters">' +
@@ -1963,11 +1895,7 @@ function renderSpending() {
     STATE.spendCat = cat; STATE.spendSub = null; renderSpending();
   }, STATE.spendCat);
 
-  if (STATE.spendCat && sixKeys.length) {
-    chartSubTrend(el("s-six-chart"), sixKeys, sixVals, STATE.spendSub || STATE.spendCat, function (k) {
-      STATE.month = k; STATE.spendScope = "month"; renderSpending();
-    });
-  }
+  if (sixCard) sixCard.draw(function (k) { STATE.month = k; STATE.spendScope = "month"; renderSpending(); });
   if (STATE.spendCat) {
     var subTotal = subs.reduce(function (s, r) { return s + r.value; }, 0);
     chartCategories(el("s-sub"), subs, subTotal, function (sub) {
@@ -4541,6 +4469,94 @@ function txnLine(t, amt, tag) {
       '<span class="m-desc">' + esc(t.ds) + '</span></span><b>' + money(amt) + '</b></div>';
 }
 
+/* Six-month comparison for one category, or one sub-category: the six months
+   up to `endK` as columns, used by the Spending and Monthly tabs alike. A
+   category's table splits it into its biggest sub-categories; a sub-category
+   has nothing finer, so its table shows how each month was made up (entries,
+   their average, the biggest). A month still under way, or with nothing in it,
+   is given the earlier average rather than a misleading percentage. Spending
+   categories count debits, income categories credits (catRows / catAmt).
+   Returns the card's html and draw(onPick) for its chart. */
+function sixMonthCard(cat, sub, endK, keys, id) {
+  var endPos = keys.indexOf(endK);
+  if (endPos < 0) endPos = keys.length - 1;
+  var sixKeys = keys.slice(Math.max(0, endPos - 5), endPos + 1);
+  var bySub = {}, tot = {}, stats = {}, isInc = false;
+  sixKeys.forEach(function (k) { tot[k] = 0; });
+  catRows(cat, sub).forEach(function (t) {
+    var k = monthKey(t.d), v = catAmt(t);
+    if (!(k in tot) || v <= 0) return;
+    isInc = t.t === "Income";
+    tot[k] += v;
+    if (!stats[k]) stats[k] = { n: 0, big: null };
+    stats[k].n++;
+    if (!stats[k].big || v > catAmt(stats[k].big)) stats[k].big = t;
+    var sb = t.s || "Other";
+    if (!bySub[sb]) bySub[sb] = {};
+    bySub[sb][k] = (bySub[sb][k] || 0) + v;
+  });
+  var vals = sixKeys.map(function (k) { return tot[k]; });
+  var curK = sixKeys[sixKeys.length - 1], cur = tot[curK];
+  var before = sixKeys.slice(0, -1);
+  var avg = before.length ? before.reduce(function (s, k) { return s + tot[k]; }, 0) / before.length : 0;
+  var underway = curK === isoDate(new Date()).slice(0, 7);
+  var verb = isInc ? "received" : "spent";
+  function cell(v) { return v ? money(v) : '<span class="muted">—</span>'; }
+
+  var head = '<tr><th>' + (sub ? '' : 'Sub-category') + '</th>' + sixKeys.map(function (k) {
+    return '<th class="num">' + monthShort(k) + (k === curK && underway ? '<br><span class="muted" style="font-weight:400">so far</span>' : '') + '</th>';
+  }).join("") + '</tr>';
+  var rows;
+  if (sub) {
+    var statRow = function (lbl, f) {
+      return '<tr><td>' + lbl + '</td>' + sixKeys.map(function (k) {
+        return '<td class="num">' + (stats[k] ? f(stats[k], k) : '<span class="muted">—</span>') + '</td>';
+      }).join("") + '</tr>';
+    };
+    rows = '<tr class="m-total" style="border:none"><td><b>' + (isInc ? 'Received' : 'Spent') + '</b></td>' +
+        sixKeys.map(function (k) { return '<td class="num"><b>' + cell(tot[k]) + '</b></td>'; }).join("") + '</tr>' +
+      statRow('Entries', function (x) { return x.n; }) +
+      statRow('Average entry', function (x, k) { return money(tot[k] / x.n); }) +
+      statRow('Biggest entry', function (x) {
+        return money(catAmt(x.big)) + '<div class="muted" style="font-size:11.5px;font-weight:400;max-width:120px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' +
+          esc(x.big.n || x.big.ds) + '">' + dayLabel(x.big.d) + (x.big.n ? ' · ' + esc(x.big.n) : '') + '</div>';
+      });
+  } else {
+    var subNames = Object.keys(bySub).map(function (n) {
+      return { n: n, v: sixKeys.reduce(function (s, k) { return s + (bySub[n][k] || 0); }, 0) };
+    }).sort(function (a, b) { return b.v - a.v; });
+    var topSubs = subNames.slice(0, 5), restSubs = subNames.slice(5);
+    rows = topSubs.map(function (r) {
+      return '<tr><td>' + esc(r.n) + '</td>' + sixKeys.map(function (k) { return '<td class="num">' + cell(bySub[r.n][k]) + '</td>'; }).join("") + '</tr>';
+    }).join("");
+    if (restSubs.length) rows += '<tr><td class="muted">' + restSubs.length + ' other' + (restSubs.length > 1 ? 's' : '') + '</td>' +
+      sixKeys.map(function (k) {
+        return '<td class="num">' + cell(restSubs.reduce(function (s, r) { return s + (bySub[r.n][k] || 0); }, 0)) + '</td>';
+      }).join("") + '</tr>';
+    rows += '<tr class="m-total"><td><b>Total</b></td>' + sixKeys.map(function (k) { return '<td class="num"><b>' + money(tot[k]) + '</b></td>'; }).join("") + '</tr>';
+  }
+
+  var diff = avg ? (cur - avg) / avg * 100 : null;
+  // more spending is bad, more income is good
+  var good = diff !== null && (diff > 0) === isInc;
+  var line = monthLabel(curK) + (underway ? ' so far' : '') + ': <b>' + (cur ? money(cur) : 'nothing ' + verb) + '</b>' +
+    (diff !== null && (underway || !cur) ? ' · the ' + before.length + ' months before averaged ' + money(avg) + ' a month'
+    : diff === null ? (before.length ? ' · nothing in the ' + before.length + ' months before' : '')
+    : ' · ' + (Math.abs(diff) < 0.5 ? 'about the same as'
+        : '<span' + (good ? ' style="color:var(--good-text)"' : ' class="neg"') + '>' +
+          Math.abs(diff).toFixed(0) + '% ' + (diff > 0 ? 'above' : 'below') + '</span>') +
+      ' the ' + money(avg) + ' average of the ' + before.length + ' months before') + '.';
+
+  return {
+    html: '<div class="card" id="' + id + '"><h2>' + esc(cat) + (sub ? ' › ' + esc(sub) : '') + ', last ' + sixKeys.length + ' months</h2>' +
+      '<p class="cap">' + line + '</p>' +
+      '<div id="' + id + '-chart"></div>' +
+      '<div class="tbl-scroll" style="margin-top:12px"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
+    '</div>',
+    draw: function (onPick) { chartSubTrend(el(id + "-chart"), sixKeys, vals, sub || cat, onPick); }
+  };
+}
+
 function catMonthDetail(k) {
   var rows = catRows(STATE.mCat, STATE.mSub).filter(function (t) { return monthKey(t.d) === k && catAmt(t) > 0; })
                                            .sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
@@ -4617,7 +4633,7 @@ function catMonthlyCard(allKeys) {
         '<div class="sub">' + (peak ? monthLabel(peak) : '—') + '</div></div>' +
     '</div>';
 
-  return tiles +
+  return (STATE.mSix ? STATE.mSix.html : '') + tiles +
     '<div class="card"><h2>' + esc(name) + ' each month</h2><p class="cap">' +
       (STATE.mYear || 'All years') + '. Tap a bar to open that month below.</p><div id="m-cat-chart"></div></div>' +
     '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
@@ -4704,6 +4720,12 @@ function renderMonthly() {
         '<option value="1"' + (OO ? ' selected' : '') + '>Set aside</option></select></div>') +
       '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
     '</div>';
+  // the six-month comparison ends at the newest month -- of the chosen year, if one is
+  STATE.mSix = null;
+  if (STATE.mCat) {
+    var yk = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; });
+    STATE.mSix = sixMonthCard(STATE.mCat, STATE.mSub, yk[yk.length - 1], keys, "m-six");
+  }
   host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
     '<div class="card"><h2>Income vs expenses</h2><p class="cap">' + (STATE.mYear || 'All years') +
       (OO ? '. Everyday expenses only: one-off costs are set aside' : '. All expenses, one-off costs included') +
@@ -4776,6 +4798,14 @@ function renderMonthly() {
       if (r) r.scrollIntoView({ block: "start" });
     });
   }
+  // a tapped month opens in the table below, as the chart under it does
+  if (STATE.mSix) STATE.mSix.draw(function (k) {
+    STATE.mcOpen[k] = true;
+    if (STATE.mYear && STATE.mYear !== k.slice(0, 4)) STATE.mYear = "";
+    renderMonthly();
+    var r = host.querySelector('tr.tax-row[data-key="' + k + '"]');
+    if (r) r.scrollIntoView({ block: "start" });
+  });
   el("m-year").addEventListener("change", function () { STATE.mYear = this.value; renderMonthly(); });
   if (el("m-oneoff")) el("m-oneoff").addEventListener("change", function () {
     STATE.mOneOff = !!this.value;
