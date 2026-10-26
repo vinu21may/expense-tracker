@@ -517,6 +517,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .em-act { font-size: 12.5px; padding: 2px 6px; margin-left: 4px; }
 .em-tel { color: var(--series-1); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .em-where { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+.em-open { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: var(--series-1); border: 1px solid var(--series-1); text-decoration: none; white-space: nowrap; }
+body.em-only nav.tabs button:not([data-tab="emergency"]), body.em-only #select { display: none; }
 .em-sub { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 2px; }
 
 /* ----------------------------------------------------------- select & export */
@@ -637,10 +640,10 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
       <button role="tab" data-tab="accounts"  aria-selected="false">Bank &amp; Cards</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
-      <button role="tab" data-tab="emergency" aria-selected="false">Emergency</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
       <button role="tab" data-tab="bills"     aria-selected="false">Upcoming Bills</button>
       <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
+      <button role="tab" data-tab="emergency" aria-selected="false">Emergency</button>
     </nav>
   </header>
   <main>
@@ -681,7 +684,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v74";
+var APP_BUILD = "finances-shell-v75";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4988,8 +4991,10 @@ function emValid(d, today) {
 function emWhere(d) {
   var bits = [];
   if (d.original) bits.push("Original: " + esc(d.original));
-  if (d.scan) bits.push("Scan: " + esc(d.scan));
-  return bits.length ? '<div class="em-where">' + bits.join(" · ") + '</div>' : "";
+  // the Mac path means nothing on Divya's phone; the Open button is what she needs
+  if (d.scan && !DATA.emergencyOnly) bits.push("Scan on the Mac: " + esc(d.scan));
+  return (bits.length ? '<div class="em-where">' + bits.join(" · ") + '</div>' : "") +
+    (d.link ? '<a class="em-open" href="' + esc(d.link) + '" target="_blank" rel="noopener">Open PDF</a>' : "");
 }
 
 // health policies covering this person, matched on the Covers text
@@ -5127,7 +5132,8 @@ function renderEmergency() {
       return rows.length ? '<div class="card"><h2>' + esc(sec) + '</h2>' + table(rows, true) + '</div>' : '';
     }).join("") +
 
-    '<p class="cap">Scans are kept on the Mac in Documents › Personal › Important Documents, never in this app. ' +
+    '<p class="cap">Open PDF opens the copy in the private "Emergency Documents" folder on Google Drive, shared only between Vinod and Divya; ' +
+      'it asks you to sign in to Google if this device is not. The Aadhaar PDFs ask for the password listed under each person. ' +
       'DigiLocker holds official copies of Aadhaar, PAN, driving licence and vehicle RC that are accepted in place of the originals. ' +
       'To change anything here, edit the Important Documents sheet in the workbook.</p>';
 
@@ -5848,8 +5854,17 @@ function boot(data, fromCache) {
   el("stamp").textContent = (fromCache ? "Offline copy · " : "") +
     (gen ? "Data to " + gen.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
-  el("foot").textContent = DATA.txns.length + " transactions · " +
-    monthLabel(monthKey(DATA.txns[0].d)) + " to " + monthLabel(monthKey(DATA.txns[DATA.txns.length - 1].d));
+  /* Divya's copy (26 Oct 2026) is a separate private repository holding only the
+     Emergency tab's data, with its own key: the app shows that tab alone. */
+  document.body.classList.toggle("em-only", !!DATA.emergencyOnly);
+  if (DATA.emergencyOnly) {
+    STATE.tab = "emergency";
+    document.querySelector(".brand").textContent = "Emergency";
+    el("foot").textContent = "Emergency information only";
+  } else {
+    el("foot").textContent = DATA.txns.length + " transactions · " +
+      monthLabel(monthKey(DATA.txns[0].d)) + " to " + monthLabel(monthKey(DATA.txns[DATA.txns.length - 1].d));
+  }
 
   switchTab(STATE.tab);
 }
