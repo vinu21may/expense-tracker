@@ -502,6 +502,31 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .empty { padding: 28px 4px; text-align: center; color: var(--muted); font-size: 14px; }
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
 .linkish { background: none; border: none; color: var(--series-1); font-size: 13px; padding: 6px; text-decoration: underline; min-height: 0; }
+
+/* ----------------------------------------------------------- select & export */
+.sel-cell { width: 34px; padding-left: 4px; padding-right: 0; }
+.sel-box { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; min-height: 30px; cursor: pointer; }
+.sel-box input { width: 20px; height: 20px; margin: 0; accent-color: var(--series-1); cursor: pointer; }
+.sel-item { position: relative; }
+.selecting .pol.sel-item, .selecting .r-row.sel-item { padding-left: 38px; }
+.selecting .acct-card.sel-item { padding-left: 46px; }
+.sel-item > .sel-box { position: absolute; left: 2px; top: 6px; }
+.acct-card.sel-item > .sel-box { left: 8px; top: 10px; }
+.pol + .pol.sel-item > .sel-box { top: 20px; }
+tr.sel-on td, .sel-item.sel-on { background: color-mix(in srgb, var(--series-1) 8%, transparent); }
+.sel-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 30;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+  width: max-content; max-width: calc(100vw - 24px);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 8px 10px;
+}
+.sel-bar .sel-count { font-size: 14px; font-weight: 600; padding: 0 6px; }
+.sel-bar button { font-size: 14px; padding: 8px 14px; min-height: 40px; }
+.sel-bar button.go { background: var(--series-1); color: #fff; border-color: transparent; }
+.sel-bar button.go:disabled { opacity: .5; cursor: default; }
+body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 </style>
 <script>
 /* Appearance is applied before the page paints, not after the app boots —
@@ -543,6 +568,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
       <div class="brand">Finances</div>
       <div class="stamp" id="stamp"></div>
       <button class="linkish" id="theme" title="Appearance: follow this device, light, or dark">Appearance</button>
+      <button class="linkish" id="select" title="Tick rows on this tab and export them as a spreadsheet">Select</button>
       <button class="linkish" id="refresh">Refresh</button>
       <button class="linkish" id="signout">Sign out</button>
     </div>
@@ -576,6 +602,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
     <section id="tab-invest"   class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
+  <div class="sel-bar hide" id="sel-bar">
+    <span class="sel-count" id="sel-count">0 selected</span>
+    <button id="sel-all">Select all</button>
+    <button id="sel-clear">Clear</button>
+    <button class="go" id="sel-export" disabled>Export</button>
+    <button id="sel-done">Done</button>
+  </div>
 </div>
 
 <script>
@@ -588,7 +621,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v68";
+var APP_BUILD = "finances-shell-v69";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1661,7 +1694,7 @@ function renderOverview() {
     var amt = t.t === "Income" ? "+" + money(t.cr)
             : t.t === "Savings" ? (t.db >= t.cr ? money(t.db - t.cr) : "+" + money(t.cr - t.db))
             : "−" + money(t.db);
-    return '<div class="r-row"><span class="r-ic ' + kind + '" aria-hidden="true">' + esc((t.c || "?").charAt(0)) + '</span>' +
+    return '<div class="r-row" data-ti="' + txnIndex(t) + '"><span class="r-ic ' + kind + '" aria-hidden="true">' + esc((t.c || "?").charAt(0)) + '</span>' +
       '<div class="r-txt"><div class="r-name">' + esc(name) + '</div>' +
       '<div class="r-meta">' + dayLabel(t.d) + ' · ' + esc(t.c || "") + (t.t === "Savings" ? " · invested" : "") + '</div></div>' +
       '<span class="r-amt' + (kind === "inc" ? " inc" : "") + '">' + amt + '</span></div>';
@@ -1998,7 +2031,7 @@ function renderTxns() {
           '<th class="num">Out</th><th class="num">In</th><th>Reference</th>' +
           '</tr></thead><tbody>' +
           shown.map(function (t) {
-            return '<tr>' +
+            return '<tr data-ti="' + txnIndex(t) + '">' +
               '<td class="rowno">' + (t.row || "—") + '</td>' +
               '<td style="white-space:nowrap">' + dayLabel(t.d) + '<div class="muted" style="font-size:11px">' + t.d.slice(0, 4) + '</div></td>' +
               '<td class="desc">' + esc(t.ds) +
@@ -4827,10 +4860,291 @@ function openMonth(k) {
 }
 
 /* =====================================================================
+   5b. Select & export
+   ===================================================================== */
+
+/* Works on every tab without each renderer knowing about it: while "Select"
+   is on, a checkbox is added to each table row, insurance policy, account card
+   and Overview recent row in the open tab. A MutationObserver puts them back
+   whenever the tab re-renders (a filter change, "Show 200 more").
+
+   Ticked items are remembered by key together with their exported values, so
+   on Transactions you can tick rows, change the filter, tick more, and export
+   them all. Transactions export from the data itself (full date, note, type,
+   plain amounts) rather than from what the screen shows. */
+
+var SEL = { on: false, picked: new Map() };
+
+var txnPos = { list: null, map: null };
+function txnIndex(t) {
+  if (txnPos.list !== DATA.txns) {
+    txnPos.list = DATA.txns; txnPos.map = new Map();
+    DATA.txns.forEach(function (x, i) { txnPos.map.set(x, i); });
+  }
+  return txnPos.map.get(t);
+}
+
+function tabLabel() {
+  var b = document.querySelector('nav.tabs button[data-tab="' + STATE.tab + '"]');
+  return b ? b.textContent.trim() : STATE.tab;
+}
+
+function cellText(node) {
+  var t = (node.innerText || node.textContent || "").replace(/\s*\n\s*/g, " · ").replace(/\s+/g, " ").trim();
+  return t === "—" ? "" : t;
+}
+
+/* "₹1,23,456.00", "+₹500", "−₹500" become plain numbers a spreadsheet can add up. */
+function exportValue(v) {
+  var m = /^([+\-−]?)₹\s?([\d,]+(?:\.\d+)?)$/.exec(v);
+  if (!m) return v;
+  var n = parseFloat(m[2].replace(/,/g, ""));
+  return m[1] === "-" || m[1] === "−" ? -n : n;
+}
+
+function groupTitle(node) {
+  var card = node.closest(".card");
+  var h = card && card.querySelector("h2");
+  return tabLabel() + (h ? " — " + cellText(h) : "");
+}
+
+function txnRecord(t) {
+  return { key: "t" + txnIndex(t), group: "Transactions",
+    cols: ["Row", "Date", "Description", "Note", "Category", "Sub-category", "Account", "Type", "Out", "In", "Reference"],
+    vals: [t.row || "", t.d, t.ds || "", t.n || "", t.c || "", t.s || "", t.ac || "", t.t || "",
+           t.db || "", t.cr || "", t.ref || ""] };
+}
+
+function itemRecord(node) {
+  if (node.dataset.ti) return txnRecord(DATA.txns[+node.dataset.ti]);
+  var group = groupTitle(node), cols = [], vals = [];
+  function add(c, v) { cols.push(c); vals.push(exportValue(v)); }
+  if (node.tagName === "TR") {
+    var table = node.closest("table");
+    var heads = table.tHead ? Array.prototype.filter.call(table.tHead.rows[0].cells, function (c) {
+      return !c.classList.contains("sel-cell"); }).map(function (c) {
+        // textContent: innerText would carry the header's CSS capitals into the file
+        return c.textContent.replace(/\s+/g, " ").trim(); }) : [];
+    Array.prototype.filter.call(node.cells, function (c) { return !c.classList.contains("sel-cell"); })
+      .forEach(function (c, i) { add(heads[i] || (i === 0 ? "Item" : "Value" + (i > 1 ? " " + i : "")), cellText(c)); });
+  } else if (node.classList.contains("pol")) {
+    add("Policy", cellText(node.querySelector(".p-name")));
+    var meta = node.querySelector(".p-meta");
+    if (meta) add("Type", cellText(meta));
+    node.querySelectorAll(".pol-fields > div").forEach(function (d) {
+      add(cellText(d.querySelector("dt")), cellText(d.querySelector("dd")));
+    });
+  } else if (node.classList.contains("acct-card")) {
+    ["ac-name:Account", "ac-sub:Details", "ac-val:Amount", "ac-val-lbl:Shown as"].forEach(function (pair) {
+      var p = pair.split(":"), x = node.querySelector("." + p[0]);
+      if (x) add(p[1], cellText(x));
+    });
+    node.querySelectorAll(".ac-row").forEach(function (r) {
+      add(cellText(r.firstElementChild), cellText(r.lastElementChild));
+    });
+  } else {
+    add("Item", cellText(node));
+  }
+  return { key: group + "|" + vals.join("|").slice(0, 300), group: group, cols: cols, vals: vals };
+}
+
+function selectableItems() {
+  var host = el("tab-" + STATE.tab);
+  if (!host) return [];
+  var items = [];
+  host.querySelectorAll("table").forEach(function (tb) {
+    Array.prototype.forEach.call(tb.tBodies, function (b) {
+      Array.prototype.forEach.call(b.rows, function (r) { if (r.cells.length) items.push(r); });
+    });
+  });
+  host.querySelectorAll(".pol, .acct-card, .ov-recent .r-row").forEach(function (n) { items.push(n); });
+  return items;
+}
+
+function makeBox(onChange) {
+  var lab = document.createElement("label");
+  lab.className = "sel-box";
+  var box = document.createElement("input");
+  box.type = "checkbox";
+  box.setAttribute("aria-label", "Select");
+  box.addEventListener("click", function (e) { e.stopPropagation(); });
+  box.addEventListener("change", function () { onChange(box.checked); });
+  lab.appendChild(box);
+  return lab;
+}
+
+function setPicked(node, on) {
+  var rec = node._selRec || (node._selRec = itemRecord(node));
+  if (on) SEL.picked.set(rec.key, rec); else SEL.picked.delete(rec.key);
+  node.classList.toggle("sel-on", on);
+  var box = node._selBox;
+  if (box) box.checked = on;
+}
+
+function syncHeaderBoxes() {
+  el("tab-" + STATE.tab).querySelectorAll("table").forEach(function (tb) {
+    var hb = tb._selAll;
+    if (!hb) return;
+    var rows = Array.prototype.filter.call(tb.querySelectorAll("tbody tr"), function (r) { return r._selBox; });
+    var n = rows.filter(function (r) { return r._selBox.checked; }).length;
+    hb.checked = rows.length > 0 && n === rows.length;
+    hb.indeterminate = n > 0 && n < rows.length;
+  });
+}
+
+function updateSelBar() {
+  var n = SEL.picked.size;
+  el("sel-count").textContent = selectableItems().length || n
+    ? n + " selected" : "Nothing on this tab to select";
+  el("sel-export").disabled = n === 0;
+  syncHeaderBoxes();
+}
+
+/* Spending is drawn as bar charts, which have nothing to tick, so while
+   selecting it gets a table of the totals behind the bars. */
+var SEL_EXTRAS = {
+  spending: function () {
+    var scope = STATE.spendScope === "month" ? STATE.month : null;
+    var when = scope ? monthLabel(scope) : "All time";
+    function table(title, list) {
+      var total = list.reduce(function (s, r) { return s + r.value; }, 0);
+      return '<div class="card sel-extra"><h2>' + esc(title) + '</h2><p class="cap">' + when + ' — shown while selecting.</p>' +
+        '<div class="tbl-scroll"><table><thead><tr><th>Name</th><th class="num">Spent</th><th class="num">Share</th></tr></thead><tbody>' +
+        list.map(function (r) {
+          return '<tr><td>' + esc(r.name) + '</td><td class="num">' + money(r.value) + '</td>' +
+            '<td class="num">' + (r.value / (total || 1) * 100).toFixed(1) + '%</td></tr>';
+        }).join("") + '</tbody></table></div></div>';
+    }
+    return table("Spending by category", categoryTotals(DATA.txns, scope)) +
+      (STATE.spendCat ? table(STATE.spendCat + " by sub-category", subCategoryTotals(DATA.txns, STATE.spendCat, scope)) : "");
+  }
+};
+
+function enhanceSelectable() {
+  if (!SEL.on) return;
+  var host = el("tab-" + STATE.tab);
+  if (SEL_EXTRAS[STATE.tab] && !host.querySelector(".sel-extra")) {
+    host.insertAdjacentHTML("beforeend", SEL_EXTRAS[STATE.tab]());
+  }
+  host.querySelectorAll("table").forEach(function (tb) {
+    if (tb.tHead && tb.tHead.rows[0] && !tb.tHead.rows[0].querySelector(".sel-cell")) {
+      var th = document.createElement("th");
+      th.className = "sel-cell";
+      var lab = makeBox(function (on) {
+        tb.querySelectorAll("tbody tr").forEach(function (r) { if (r._selBox) setPicked(r, on); });
+        updateSelBar();
+      });
+      tb._selAll = lab.firstChild;
+      lab.firstChild.setAttribute("aria-label", "Select all rows in this table");
+      th.appendChild(lab);
+      tb.tHead.rows[0].insertBefore(th, tb.tHead.rows[0].firstChild);
+    }
+  });
+  selectableItems().forEach(function (node) {
+    if (node._selBox && node.contains(node._selBox)) return;
+    var lab = makeBox(function (on) { setPicked(node, on); updateSelBar(); });
+    node._selBox = lab.firstChild;
+    if (node.tagName === "TR") {
+      var td = document.createElement("td");
+      td.className = "sel-cell";
+      td.appendChild(lab);
+      node.insertBefore(td, node.firstChild);
+    } else {
+      node.classList.add("sel-item");
+      node.insertBefore(lab, node.firstChild);
+    }
+    // a re-render brings back rows already ticked: show them ticked
+    node._selRec = itemRecord(node);
+    if (SEL.picked.has(node._selRec.key)) { node._selBox.checked = true; node.classList.add("sel-on"); }
+  });
+  updateSelBar();
+}
+
+function setSelecting(on, noRedraw) {
+  SEL.on = on;
+  SEL.picked.clear();
+  document.body.classList.toggle("selecting", on);
+  el("sel-bar").classList.toggle("hide", !on);
+  el("select").textContent = on ? "Done selecting" : "Select";
+  if (on) enhanceSelectable();
+  else if (!noRedraw && STATE.tab && DATA) switchTab(STATE.tab, true);   // redraw without the checkboxes
+}
+
+function csvField(v) {
+  if (typeof v === "number") return String(v);
+  v = String(v == null ? "" : v);
+  if (/^[=@]/.test(v)) v = "'" + v;   // never let a description run as a spreadsheet formula
+  return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+
+function exportPicked() {
+  var groups = [], byName = {};
+  SEL.picked.forEach(function (rec) {
+    var g = byName[rec.group];
+    if (!g) { g = byName[rec.group] = { name: rec.group, cols: [], rows: [] }; groups.push(g); }
+    rec.cols.forEach(function (c) { if (g.cols.indexOf(c) < 0) g.cols.push(c); });
+    g.rows.push(rec);
+  });
+  var today = new Date().toISOString().slice(0, 10);
+  var lines = [[csvField("Finances export"), csvField(tabLabel()), today].join(",")];
+  groups.forEach(function (g) {
+    lines.push("");
+    if (groups.length > 1 || g.name !== tabLabel()) lines.push(csvField(g.name));
+    lines.push(g.cols.map(csvField).join(","));
+    g.rows.forEach(function (rec) {
+      lines.push(g.cols.map(function (c) {
+        var i = rec.cols.indexOf(c);
+        return csvField(i < 0 ? "" : rec.vals[i]);
+      }).join(","));
+    });
+  });
+  // the BOM makes Excel read ₹ and other non-ASCII text correctly
+  var name = "Finances - " + tabLabel().replace(/[\/\\:&]+/g, " ").replace(/\s+/g, " ").trim() + " - " + today + ".csv";
+  var blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });
+
+  /* On the iPad the share sheet offers Save to Files, Mail, Numbers and so on;
+     a plain download from a Home Screen app is easy to lose. The Mac downloads. */
+  var file = null;
+  try { file = new File([blob], name, { type: "text/csv" }); } catch (e) { /* older Safari */ }
+  if (file && window.matchMedia("(pointer: coarse)").matches &&
+      navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: name }).catch(function () { /* cancelled */ });
+    return;
+  }
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+}
+
+var selTimer = null;
+new MutationObserver(function () {
+  if (!SEL.on || selTimer) return;
+  selTimer = requestAnimationFrame(function () { selTimer = null; enhanceSelectable(); });
+}).observe(document.querySelector("main"), { childList: true, subtree: true });
+
+el("select").addEventListener("click", function () { setSelecting(!SEL.on); });
+el("sel-done").addEventListener("click", function () { setSelecting(false); });
+el("sel-export").addEventListener("click", exportPicked);
+el("sel-all").addEventListener("click", function () {
+  selectableItems().forEach(function (n) { if (n._selBox) setPicked(n, true); });
+  updateSelBar();
+});
+el("sel-clear").addEventListener("click", function () {
+  SEL.picked.clear();
+  document.querySelectorAll(".sel-on").forEach(function (n) { n.classList.remove("sel-on"); });
+  document.querySelectorAll(".sel-box input").forEach(function (b) { b.checked = false; b.indeterminate = false; });
+  updateSelBar();
+});
+
+/* =====================================================================
    6. Shell wiring
    ===================================================================== */
 
-function switchTab(name) {
+function switchTab(name, keepSelecting) {
+  // ticks belong to one tab; moving to another ends selecting
+  if (SEL.on && !keepSelecting && name !== STATE.tab) setSelecting(false, true);
   STATE.tab = name;
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
