@@ -684,7 +684,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v75";
+var APP_BUILD = "finances-shell-v76";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2924,6 +2924,8 @@ function renderInsurance() {
             (n.every ? ' (' + n.every + ')' : '') + '</span>'
           : '<span class="muted">' + esc(p.renewalText || "not stated") + '</span>') +
         field("Cover Period", period) +
+        (p.link ? field("Policy Document", '<a class="em-open" style="margin-top:0" href="' + esc(p.link) +
+          '" target="_blank" rel="noopener">Open PDF</a>') : "") +
       '</dl>' +
     '</div>';
   }
@@ -5104,7 +5106,8 @@ function renderEmergency() {
         (cover.length && !EM.missing
           ? '<div class="em-sub">Health cover</div><div class="tbl-scroll"><table><thead><tr><th>Policy</th><th>Policy no.</th><th class="num">Sum insured</th><th>Claims</th></tr></thead><tbody>' +
             cover.map(function (p) {
-              return '<tr><td><b>' + esc(p.name) + '</b><div class="em-where">' + esc(p.insurer) + '</div></td>' +
+              return '<tr><td><b>' + esc(p.name) + '</b><div class="em-where">' + esc(p.insurer) + '</div>' +
+                (p.link ? '<a class="em-open" href="' + esc(p.link) + '" target="_blank" rel="noopener">Open PDF</a>' : '') + '</td>' +
                 '<td class="em-num">' + esc(p.ref) + '</td>' +
                 '<td class="num">' + (p.sum == null ? '—' : money(p.sum)) + '</td>' +
                 '<td>' + emClaimsLine(p, contacts) + '</td></tr>';
@@ -5126,6 +5129,25 @@ function renderEmergency() {
               '<td>' + emNumber(x.d, x.i) + '</td></tr>';
           }).join("") + '</tbody></table></div>';
       })() + '</div>' +
+
+    /* term life, car and accident cover: who needs which policy if something happens
+       (ULIPs and savings plans are investments and stay on the Insurance tab) */
+    (function () {
+      var other = (DATA.insurance || []).filter(function (p) {
+        return p.kind === "Life" || p.kind === "Motor" || p.kind === "Personal Accident";
+      });
+      if (!other.length || EM.missing) return "";
+      return '<div class="card"><h2>Other insurance</h2><p class="cap">Term life, car and personal accident.</p>' +
+        '<div class="tbl-scroll"><table><thead><tr><th>Policy</th><th>Policy no.</th><th>Covers</th><th>Claims</th></tr></thead><tbody>' +
+        other.map(function (p) {
+          return '<tr><td><b>' + esc(p.name) + '</b><div class="em-where">' + esc(p.insurer) +
+              (p.renewal ? ' · renews ' + dayLabel(p.renewal) + ' ' + p.renewal.slice(0, 4) : '') + '</div>' +
+              (p.link ? '<a class="em-open" href="' + esc(p.link) + '" target="_blank" rel="noopener">Open PDF</a>' : '') + '</td>' +
+            '<td class="em-num">' + esc(p.ref) + '</td>' +
+            '<td>' + esc(p.covers) + (p.sum == null ? '' : '<div class="em-where">' + money(p.sum) + '</div>') + '</td>' +
+            '<td>' + emClaimsLine(p, contacts) + '</td></tr>';
+        }).join("") + '</tbody></table></div></div>';
+    })() +
 
     ["Certificates", "Vehicle", "Money & legal"].map(function (sec) {
       var rows = idx.filter(function (x) { return x.d.section === sec; });
