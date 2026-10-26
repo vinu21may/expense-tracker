@@ -503,6 +503,22 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
 .linkish { background: none; border: none; color: var(--series-1); font-size: 13px; padding: 6px; text-decoration: underline; min-height: 0; }
 
+/* ----------------------------------------------------------- emergency */
+.em-calls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.em-call { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 120px;
+  padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--plane);
+  color: var(--text-primary); text-decoration: none; }
+.em-call b { font-size: 20px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.em-call span { font-size: 12px; color: var(--muted); }
+.em-call.sos { border-color: var(--critical); }
+.em-call.sos b { color: var(--critical); }
+.em-num { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.em-num.masked { letter-spacing: .04em; color: var(--text-secondary); }
+.em-act { font-size: 12.5px; padding: 2px 6px; margin-left: 4px; }
+.em-tel { color: var(--series-1); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.em-where { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+.em-sub { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 2px; }
+
 /* ----------------------------------------------------------- select & export */
 .sel-cell { width: 34px; padding-left: 4px; padding-right: 0; }
 .sel-box { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; min-height: 30px; cursor: pointer; }
@@ -621,6 +637,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
       <button role="tab" data-tab="accounts"  aria-selected="false">Bank &amp; Cards</button>
       <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
       <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
+      <button role="tab" data-tab="emergency" aria-selected="false">Emergency</button>
       <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
       <button role="tab" data-tab="bills"     aria-selected="false">Upcoming Bills</button>
       <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
@@ -635,6 +652,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
     <section id="tab-assets"   class="hide"></section>
     <section id="tab-bills"     class="hide"></section>
     <section id="tab-insurance" class="hide"></section>
+    <section id="tab-emergency" class="hide"></section>
     <section id="tab-salary"    class="hide"></section>
     <section id="tab-tax"       class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
@@ -663,7 +681,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v71";
+var APP_BUILD = "finances-shell-v72";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3038,6 +3056,16 @@ function billSchedule(today, end) {
     });
   });
 
+  // a passport or licence running out inside the window is a renewal to plan for
+  (DATA.documents || []).forEach(function (d) {
+    if (!d.valid || d.valid < today || d.valid > end) return;
+    bills.push({
+      name: d.person + ": " + d.doc + " expires", group: "Renewals", amount: null, amountIs: "",
+      every: "Once", due: d.valid, via: "", mandate: "", status: "Active",
+      evidence: "Important Documents sheet", notes: "Renewal fee not known"
+    });
+  });
+
   var occ = [];
   bills.forEach(function (b) {
     billDates(b.due, b.every, today, end).forEach(function (o, i) {
@@ -4902,6 +4930,227 @@ function openMonth(k) {
 }
 
 /* =====================================================================
+   5a. Emergency
+   ===================================================================== */
+
+/* Everything the family would need to hand in an emergency, from the Important
+   Documents sheet: who to call, each person's identity numbers and health
+   basics, their health cover (taken from Insurance Policies, not typed twice),
+   and where every original and scan is kept. The scans themselves are never in
+   the app.
+
+   Numbers the sheet marks "Hide on Screen" show only their last four characters
+   until tapped, and hide again after 30 seconds, so the iPad lying open on a
+   table does not display an Aadhaar number. */
+
+var EM = { shown: {}, missing: false, timers: {} };
+
+var EM_GENERIC = ["Family", "Anyone", "Cards", "Insurance"];
+
+function emMask(n) {
+  var t = String(n).replace(/\s+/g, "");
+  return "•••• " + t.slice(-4);
+}
+
+// "1800 1600 / 1800 2600" -> two tap-to-call links; anything else stays text
+function emTel(s) {
+  return String(s).split(/\s*\/\s*/).map(function (part) {
+    var digits = part.replace(/[^\d+]/g, "");
+    return /^[\d +()-]{3,}$/.test(part) && digits.length >= 3
+      ? '<a class="em-tel" href="tel:' + digits + '">' + esc(part) + '</a>'
+      : esc(part);
+  }).join(" / ");
+}
+
+function emNumber(d, i) {
+  if (!d.number) return '<span class="pill">to fill in</span>';
+  if (!d.hide) return d.section === "Contacts" ? emTel(d.number) : '<span class="em-num">' + esc(d.number) + '</span>';
+  return EM.shown[i]
+    ? '<span class="em-num">' + esc(d.number) + '</span>' +
+      '<button class="linkish em-act" data-em-hide="' + i + '">Hide</button>' +
+      '<button class="linkish em-act" data-em-copy="' + i + '">Copy</button>'
+    : '<span class="em-num masked">' + emMask(d.number) + '</span>' +
+      '<button class="linkish em-act" data-em-show="' + i + '">Show</button>';
+}
+
+function emValid(d, today) {
+  if (!d.valid) return '<span class="muted">—</span>';
+  var days = Math.round((new Date(d.valid + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+  var when = dayLabel(d.valid) + " " + d.valid.slice(0, 4);
+  if (days < 0) return '<span class="pill bad">expired</span><div class="em-where">' + when + '</div>';
+  if (days <= 180) return '<span class="pill warn">' + days + ' days</span><div class="em-where">' + when + '</div>';
+  return when;
+}
+
+function emWhere(d) {
+  var bits = [];
+  if (d.original) bits.push("Original: " + esc(d.original));
+  if (d.scan) bits.push("Scan: " + esc(d.scan));
+  return bits.length ? '<div class="em-where">' + bits.join(" · ") + '</div>' : "";
+}
+
+// health policies covering this person, matched on the Covers text
+function emCover(person) {
+  var who = {
+    "Vinod": /\bVinod\b/,
+    "Divya": /\bDivya\b(?!'s)/,
+    "Amma (Padmaja)": /Padmaja|^Mother\b/,
+    "Divya's father": /Divya's father/,
+    "Divya's mother": /Divya's.*\bmother\b/
+  }[person];
+  if (!who) return [];
+  return (DATA.insurance || []).filter(function (p) {
+    return p.kind === "Health" && who.test(p.covers || "");
+  });
+}
+
+function emClaimsLine(p, contacts) {
+  // the insurer's full name: "HDFC" alone would find HDFC Bank's card line
+  var key = /^via employer/i.test(p.insurer) ? p.name.split(" ")[0] : (p.insurer || "");
+  var re = key && new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+  var c = contacts.filter(function (d) { return re && re.test(d.doc); })[0];
+  return c && c.number ? emTel(c.number) : '<span class="muted">—</span>';
+}
+
+function renderEmergency() {
+  var docs = DATA.documents || [];
+  var host = el("tab-emergency");
+  if (!docs.length) {
+    host.innerHTML = '<div class="card"><div class="empty">The Important Documents sheet is not in this copy of the data yet.</div></div>';
+    return;
+  }
+  var today = isoDate(new Date());
+  var idx = docs.map(function (d, i) { return { d: d, i: i }; });
+  function keep(x) { return !EM.missing || !x.d.number; }
+
+  var contacts = docs.filter(function (d) { return d.section === "Contacts"; });
+  var people = [];
+  docs.forEach(function (d) {
+    if (d.section === "Contacts" || EM_GENERIC.indexOf(d.person) >= 0 || / & /.test(d.person)) return;
+    if (people.indexOf(d.person) < 0) people.push(d.person);
+  });
+
+  // ---- call buttons: national numbers first, then the family's own phones
+  var calls = idx.filter(function (x) {
+    return x.d.section === "Contacts" && x.d.number && (x.d.person === "Anyone" || x.d.doc === "Mobile");
+  }).map(function (x) {
+    var d = x.d, digits = d.number.replace(/[^\d+]/g, "");
+    var label = d.doc === "Mobile" ? d.person : d.doc.replace(/\s*\(.*\)$/, "");
+    return '<a class="em-call' + (d.number === "112" ? " sos" : "") + '" href="tel:' + digits + '">' +
+      '<b>' + esc(d.number) + '</b><span>' + esc(label) + '</span></a>';
+  }).join("");
+
+  // ---- what needs doing
+  var expiring = idx.filter(function (x) {
+    if (!x.d.valid) return false;
+    var days = Math.round((new Date(x.d.valid + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+    return days <= 180;
+  });
+  var blanks = docs.filter(function (d) { return !d.number && !d.scan; }).length;
+
+  function table(rows, withPerson) {
+    rows = rows.filter(keep);
+    if (!rows.length) return '<div class="empty">' + (EM.missing ? "Nothing missing here." : "Nothing listed.") + '</div>';
+    return '<div class="tbl-scroll"><table><thead><tr>' + (withPerson ? '<th>Who</th>' : '') +
+      '<th>Document</th><th>Number</th><th>Valid until</th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        var d = x.d;
+        return '<tr>' + (withPerson ? '<td>' + esc(d.person) + '</td>' : '') +
+          '<td><b>' + esc(d.doc) + '</b>' + (d.name ? '<div class="em-where">' + esc(d.name) + '</div>' : '') +
+            emWhere(d) + (d.notes ? '<div class="em-where">' + esc(d.notes) + '</div>' : '') + '</td>' +
+          '<td>' + emNumber(d, x.i) + '</td>' +
+          '<td style="white-space:nowrap">' + emValid(d, today) + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
+  }
+
+  var html =
+    '<div class="card"><h2>In an emergency</h2>' +
+      '<p class="cap" style="margin-bottom:0">Tap a number to call it. Each person below has their identity numbers, health basics and health cover in one place.</p>' +
+      '<div class="em-calls">' + calls + '</div></div>' +
+
+    '<div class="grid k4" style="margin-bottom:16px">' +
+      '<div class="tile"><div class="lbl">People</div><div class="val">' + people.length + '</div><div class="sub">' + esc(people.join(", ")) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Documents</div><div class="val">' + docs.filter(function (d) { return d.section !== "Contacts"; }).length + '</div><div class="sub">' + docs.filter(function (d) { return d.scan; }).length + ' with a scan on the Mac</div></div>' +
+      '<div class="tile"><div class="lbl">Expired or due</div><div class="val">' + expiring.length + '</div><div class="sub">within 6 months</div></div>' +
+      '<div class="tile click' + (EM.missing ? ' on' : '') + '" role="button" tabindex="0" id="em-missing"><div class="lbl">Still to fill in</div><div class="val">' + blanks + '</div><div class="sub">' + (EM.missing ? 'showing only these · tap for all' : 'tap to show only these') + '</div></div>' +
+    '</div>' +
+
+    (expiring.length && !EM.missing
+      ? '<div class="card"><h2>Needs attention</h2><p class="cap">Expired, or running out within six months. A passport can be renewed up to a year early.</p>' +
+        table(expiring, true) + '</div>'
+      : '') +
+
+    people.map(function (person) {
+      var mine = idx.filter(function (x) { return x.d.person === person; });
+      var health = mine.filter(function (x) { return x.d.section === "Health"; });
+      var ids = mine.filter(function (x) { return x.d.section === "Identity"; });
+      var cover = emCover(person);
+      return '<div class="card"><h2>' + esc(person) + '</h2>' +
+        (health.filter(keep).length ? '<div class="em-sub">Health</div>' + table(health) : '') +
+        (ids.filter(keep).length ? '<div class="em-sub">Identity</div>' + table(ids) : '') +
+        (cover.length && !EM.missing
+          ? '<div class="em-sub">Health cover</div><div class="tbl-scroll"><table><thead><tr><th>Policy</th><th>Policy no.</th><th class="num">Sum insured</th><th>Claims</th></tr></thead><tbody>' +
+            cover.map(function (p) {
+              return '<tr><td><b>' + esc(p.name) + '</b><div class="em-where">' + esc(p.insurer) + '</div></td>' +
+                '<td class="em-num">' + esc(p.ref) + '</td>' +
+                '<td class="num">' + (p.sum == null ? '—' : money(p.sum)) + '</td>' +
+                '<td>' + emClaimsLine(p, contacts) + '</td></tr>';
+            }).join("") + '</tbody></table></div>'
+          : '') +
+        '</div>';
+    }).join("") +
+
+    '<div class="card"><h2>Doctor, hospital and helplines</h2><p class="cap">Who to ring for care, to block a card, to start a claim or to report fraud.</p>' +
+      (function () {
+        var rows = idx.filter(function (x) {
+          return (x.d.section === "Contacts" && x.d.person !== "Anyone" && x.d.doc !== "Mobile") ||
+                 (x.d.section === "Health" && EM_GENERIC.indexOf(x.d.person) >= 0);
+        }).filter(keep);
+        if (!rows.length) return '<div class="empty">Nothing missing here.</div>';
+        return '<div class="tbl-scroll"><table><thead><tr><th>For</th><th>Number</th></tr></thead><tbody>' +
+          rows.map(function (x) {
+            return '<tr><td><b>' + esc(x.d.doc) + '</b>' + (x.d.notes ? '<div class="em-where">' + esc(x.d.notes) + '</div>' : '') + '</td>' +
+              '<td>' + emNumber(x.d, x.i) + '</td></tr>';
+          }).join("") + '</tbody></table></div>';
+      })() + '</div>' +
+
+    ["Certificates", "Vehicle", "Money & legal"].map(function (sec) {
+      var rows = idx.filter(function (x) { return x.d.section === sec; });
+      return rows.length ? '<div class="card"><h2>' + esc(sec) + '</h2>' + table(rows, true) + '</div>' : '';
+    }).join("") +
+
+    '<p class="cap">Scans are kept on the Mac in Documents › Personal › Important Documents, never in this app. ' +
+      'DigiLocker holds official copies of Aadhaar, PAN, driving licence and vehicle RC that are accepted in place of the originals. ' +
+      'To change anything here, edit the Important Documents sheet in the workbook.</p>';
+
+  host.innerHTML = html;
+
+  el("em-missing").addEventListener("click", function () { EM.missing = !EM.missing; renderEmergency(); });
+  host.querySelectorAll("[data-em-show]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var i = b.dataset.emShow;
+      EM.shown[i] = true;
+      clearTimeout(EM.timers[i]);
+      EM.timers[i] = setTimeout(function () {
+        delete EM.shown[i];
+        if (STATE.tab === "emergency") renderEmergency();
+      }, 30000);
+      renderEmergency();
+    });
+  });
+  host.querySelectorAll("[data-em-hide]").forEach(function (b) {
+    b.addEventListener("click", function () { delete EM.shown[b.dataset.emHide]; renderEmergency(); });
+  });
+  host.querySelectorAll("[data-em-copy]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var n = docs[+b.dataset.emCopy].number;
+      (navigator.clipboard ? navigator.clipboard.writeText(n) : Promise.reject())
+        .then(function () { b.textContent = "Copied"; }, function () { b.textContent = "Copy failed"; });
+    });
+  });
+}
+
+/* =====================================================================
    5b. Select & export
    ===================================================================== */
 
@@ -5546,7 +5795,7 @@ function switchTab(name, keepSelecting) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
-  ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "amma", "invest"].forEach(function (t) {
+  ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "emergency", "amma", "invest"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
@@ -5556,6 +5805,7 @@ function switchTab(name, keepSelecting) {
   if (name === "accounts" || name === "assets") renderAssets();
   if (name === "bills")     renderBills();
   if (name === "insurance") renderInsurance();
+  if (name === "emergency") renderEmergency();
   if (name === "salary")    renderSalary();
   if (name === "tax")       renderTax();
   if (name === "amma")      renderAmma();
