@@ -550,6 +550,21 @@ tr.sel-on td, .sel-item.sel-on { background: color-mix(in srgb, var(--series-1) 
 .sel-sheet .acts button { font-size: 14px; padding: 9px 16px; min-height: 40px; }
 .sel-sheet .acts button.go { background: var(--series-1); color: #fff; border-color: transparent; }
 .sel-sheet .acts button.go:disabled { opacity: .5; cursor: default; }
+#print-view { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  body.printing > *:not(#print-view) { display: none !important; }
+  body.printing { background: #fff; }
+  body.printing #print-view { display: block; color: #000; font-size: 9pt; }
+  #print-view h1 { font-size: 14pt; margin: 0 0 2pt; }
+  #print-view .pv-sub { color: #555; margin: 0 0 10pt; }
+  #print-view h2 { font-size: 11pt; margin: 12pt 0 4pt; }
+  #print-view table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  #print-view th { text-align: left; border-bottom: 1.5pt solid #000; padding: 3pt 4pt; font-size: 8pt; text-transform: none; color: #000; }
+  #print-view td { border-bottom: .5pt solid #bbb; padding: 3pt 4pt; vertical-align: top; }
+  #print-view td.num, #print-view th.num { text-align: right; white-space: nowrap; }
+  #print-view tr { break-inside: avoid; }
+}
 body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 </style>
 <script>
@@ -635,6 +650,8 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
   </div>
   <div class="sel-sheet hide" id="sel-sheet" role="dialog" aria-label="Export"></div>
 </div>
+<div id="print-view">
+</div>
 
 <script>
 "use strict";
@@ -646,7 +663,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v70";
+var APP_BUILD = "finances-shell-v71";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4899,7 +4916,8 @@ function openMonth(k) {
    plain amounts) rather than from what the screen shows. */
 
 var SEL = { on: false, picked: new Map(),
-            what: "", period: "any", year: "", month: "", from: "", to: "" };
+            what: "", period: "any", year: "", month: "", from: "", to: "", format: "xlsx" };
+try { SEL.format = localStorage.getItem("ft.exportFormat") || "xlsx"; } catch (e) { /* private window */ }
 
 var txnPos = { list: null, map: null };
 function txnIndex(t) {
@@ -5229,6 +5247,17 @@ function renderExportSheet() {
       ? '<div class="range"><div><label for="sel-from">From</label><input type="date" id="sel-from" value="' + SEL.from + '"></div>' +
         '<div><label for="sel-to">To</label><input type="date" id="sel-to" value="' + SEL.to + '"></div></div>'
       : "") +
+    '<div class="lbl">Format</div>' +
+    '<div class="seg">' +
+      ['xlsx:Excel', 'pdf:PDF', 'csv:CSV'].map(function (f) {
+        f = f.split(":");
+        return '<button data-f="' + f[0] + '" aria-pressed="' + (SEL.format === f[0]) + '">' + f[1] + '</button>';
+      }).join("") + '</div>' +
+    '<p class="note">' + {
+      xlsx: "A workbook for Excel or Numbers — one sheet per table, amounts and dates ready to sum and sort.",
+      pdf: "A page to read, print or send. Opens the print screen: choose Save as PDF (on the iPad, Share → Save to Files).",
+      csv: "Plain text any program can read. Use it to load the rows into another app."
+    }[SEL.format] + '</p>' +
     (SEL.what === "ticked" && SEL.period !== "any" && undated
       ? '<p class="note">' + undated + ' of the ticked rows have no date of their own, so they are exported whatever the period.</p>'
       : "") +
@@ -5241,8 +5270,15 @@ function renderExportSheet() {
   sh.querySelectorAll('input[name="sel-what"]').forEach(function (r) {
     r.addEventListener("change", function () { SEL.what = r.value; renderExportSheet(); });
   });
-  sh.querySelectorAll(".seg button").forEach(function (b) {
+  sh.querySelectorAll(".seg button[data-p]").forEach(function (b) {
     b.addEventListener("click", function () { SEL.period = b.dataset.p; renderExportSheet(); });
+  });
+  sh.querySelectorAll(".seg button[data-f]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      SEL.format = b.dataset.f;
+      try { localStorage.setItem("ft.exportFormat", SEL.format); } catch (e) { /* not kept */ }
+      renderExportSheet();
+    });
   });
   [["sel-year", "year"], ["sel-month", "month"], ["sel-from", "from"], ["sel-to", "to"]].forEach(function (pair) {
     var f = el(pair[0]);
@@ -5262,37 +5298,53 @@ function openExportSheet() {
 }
 function closeExportSheet() { el("sel-sheet").classList.add("hide"); }
 
-function exportPicked(records, per) {
+function exportGroups(records) {
   var groups = [], byName = {};
   records.forEach(function (rec) {
+    // spacer rows in a table have nothing worth a line in the file
+    if (!rec.vals.some(function (v) { return v !== "" && v != null; })) return;
     var g = byName[rec.group];
     if (!g) { g = byName[rec.group] = { name: rec.group, cols: [], rows: [] }; groups.push(g); }
     rec.cols.forEach(function (c) { if (g.cols.indexOf(c) < 0) g.cols.push(c); });
     g.rows.push(rec);
   });
+  groups.forEach(function (g) {
+    g.rows = g.rows.map(function (rec) {
+      return g.cols.map(function (c) { var i = rec.cols.indexOf(c); return i < 0 ? "" : rec.vals[i]; });
+    });
+  });
+  return groups;
+}
+
+function exportPicked(records, per) {
+  var groups = exportGroups(records);
   var today = new Date().toISOString().slice(0, 10);
-  var lines = [[csvField("Finances export"), csvField(tabLabel()), csvField(per ? per.label : "Any time"), today].join(",")];
+  var title = SEL.what === "all" ? "Transactions" : tabLabel();
+  var periodText = per ? per.label : "Any time";
+  var clean = function (x) { return x.replace(/[\/\\:&]+/g, " ").replace(/\s+/g, " ").trim(); };
+  var base = "Finances - " + clean(title) + " - " + clean(per ? per.label : today);
+
+  if (SEL.format === "pdf") return printExport(groups, title, periodText);
+  if (SEL.format === "xlsx") {
+    return saveFile(xlsxBlob(groups), base + ".xlsx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+  var lines = [[csvField("Finances export"), csvField(tabLabel()), csvField(periodText), today].join(",")];
   groups.forEach(function (g) {
     lines.push("");
     if (groups.length > 1 || g.name !== tabLabel()) lines.push(csvField(g.name));
     lines.push(g.cols.map(csvField).join(","));
-    g.rows.forEach(function (rec) {
-      lines.push(g.cols.map(function (c) {
-        var i = rec.cols.indexOf(c);
-        return csvField(i < 0 ? "" : rec.vals[i]);
-      }).join(","));
-    });
+    g.rows.forEach(function (r) { lines.push(r.map(csvField).join(",")); });
   });
   // the BOM makes Excel read ₹ and other non-ASCII text correctly
-  var clean = function (x) { return x.replace(/[\/\\:&]+/g, " ").replace(/\s+/g, " ").trim(); };
-  var name = "Finances - " + clean(SEL.what === "all" ? "Transactions" : tabLabel()) + " - " +
-    clean(per ? per.label : today) + ".csv";
-  var blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });
+  saveFile(new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" }), base + ".csv", "text/csv");
+}
 
+function saveFile(blob, name, type) {
   /* On the iPad the share sheet offers Save to Files, Mail, Numbers and so on;
      a plain download from a Home Screen app is easy to lose. The Mac downloads. */
   var file = null;
-  try { file = new File([blob], name, { type: "text/csv" }); } catch (e) { /* older Safari */ }
+  try { file = new File([blob], name, { type: type }); } catch (e) { /* older Safari */ }
   if (file && window.matchMedia("(pointer: coarse)").matches &&
       navigator.canShare && navigator.canShare({ files: [file] })) {
     navigator.share({ files: [file], title: name }).catch(function () { /* cancelled */ });
@@ -5303,6 +5355,162 @@ function exportPicked(records, per) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+}
+
+/* PDF: the browser's own print screen does the PDF, which keeps this free of
+   any library. A print-only copy of the rows is laid out, everything else is
+   hidden while printing, and the copy is removed afterwards. */
+function printExport(groups, title, periodText) {
+  var pv = el("print-view");
+  pv.innerHTML = '<h1>' + esc(title) + '</h1><p class="pv-sub">' + esc(periodText) + ' · exported ' +
+    longDay(new Date().toISOString().slice(0, 10)) + '</p>' +
+    groups.map(function (g) {
+      var numCol = g.cols.map(function (c, i) {
+        return g.rows.some(function (r) { return typeof r[i] === "number"; });
+      });
+      function cell(v, i, tag) {
+        var shown = typeof v === "number" ? inr2.format(v).replace(/\.00$/, "") : String(v);
+        return '<' + tag + (numCol[i] ? ' class="num"' : '') + '>' + esc(shown) + '</' + tag + '>';
+      }
+      return (groups.length > 1 || g.name !== title ? '<h2>' + esc(g.name) + '</h2>' : '') +
+        '<table><thead><tr>' + g.cols.map(function (c, i) { return cell(c, i, "th"); }).join("") + '</tr></thead><tbody>' +
+        g.rows.map(function (r) { return '<tr>' + r.map(function (v, i) { return cell(v, i, "td"); }).join("") + '</tr>'; }).join("") +
+        '</tbody></table>';
+    }).join("");
+  document.body.classList.add("printing");
+  var done = function () {
+    document.body.classList.remove("printing");
+    pv.innerHTML = "";
+    window.removeEventListener("afterprint", done);
+  };
+  window.addEventListener("afterprint", done);
+  setTimeout(function () { window.print(); }, 50);
+}
+
+/* Excel: a real .xlsx built here — an .xlsx is a zip of a few XML files, and
+   an uncompressed ("stored") zip is simple to write. One sheet per table;
+   numbers stay numbers and ISO dates become real Excel dates. */
+var CRC_TABLE = null;
+function crc32(bytes) {
+  if (!CRC_TABLE) {
+    CRC_TABLE = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function zipStored(files) {
+  var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+  function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+  function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+  files.forEach(function (f) {
+    var name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+    var common = [].concat(u16(20), u16(0x0800), u16(0), u16(0), u16(0x21),
+      u32(crc), u32(data.length), u32(data.length), u16(name.length));
+    var local = new Uint8Array([].concat([0x50, 0x4B, 0x03, 0x04], common, u16(0)));
+    parts.push(local, name, data);
+    central.push(new Uint8Array([].concat([0x50, 0x4B, 0x01, 0x02], u16(20), common,
+      u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset))), name);
+    offset += local.length + name.length + data.length;
+  });
+  var size = central.reduce(function (s, b) { return s + b.length; }, 0);
+  var end = new Uint8Array([].concat([0x50, 0x4B, 0x05, 0x06], u16(0), u16(0),
+    u16(files.length), u16(files.length), u32(size), u32(offset), u16(0)));
+  return new Blob(parts.concat(central, [end]));
+}
+
+function xmlEsc(v) {
+  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+
+function xlsxBlob(groups) {
+  function colName(i) { var s = ""; i++; while (i) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; }
+  function cell(v, ref, header, numStyle) {
+    if (header) return '<c r="' + ref + '" s="1" t="inlineStr"><is><t>' + xmlEsc(v) + '</t></is></c>';
+    if (typeof v === "number") return '<c r="' + ref + '" s="' + numStyle + '"><v>' + v + '</v></c>';
+    if (v === "" || v == null) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      var serial = (Date.UTC(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)) - Date.UTC(1899, 11, 30)) / 86400000;
+      return '<c r="' + ref + '" s="2"><v>' + serial + '</v></c>';
+    }
+    return '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + '</t></is></c>';
+  }
+  var used = {}, sheets = groups.map(function (g, gi) {
+    // sheet names: 31 characters, none of []:*?/\ , unique
+    var nm = g.name.replace(/^.*? — /, "").replace(/[\[\]:*?\/\\]/g, " ").slice(0, 31).trim() || "Sheet " + (gi + 1);
+    var base = nm, k = 2;
+    while (used[nm.toLowerCase()]) nm = base.slice(0, 27) + " (" + (k++) + ")";
+    used[nm.toLowerCase()] = 1;
+    // one number style per column: paise if any row has them, none for row numbers and years
+    var numStyle = g.cols.map(function (c, i) {
+      if (/^(row|year)$/i.test(c)) return 0;
+      return g.rows.some(function (r) { return typeof r[i] === "number" && Math.round(r[i]) !== r[i]; }) ? 3 : 4;
+    });
+    var widths = g.cols.map(function (c, i) {
+      var w = c.length;
+      g.rows.forEach(function (r) { var v = r[i]; w = Math.max(w, typeof v === "number" ? 12 : String(v).length); });
+      return Math.min(Math.max(w + 2, 8), 60);
+    });
+    var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      '<cols>' + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join("") + '</cols>' +
+      '<sheetData>' +
+      '<row r="1">' + g.cols.map(function (c, i) { return cell(c, colName(i) + 1, true); }).join("") + '</row>' +
+      g.rows.map(function (r, ri) {
+        return '<row r="' + (ri + 2) + '">' + r.map(function (v, i) { return cell(v, colName(i) + (ri + 2), false, numStyle[i]); }).join("") + '</row>';
+      }).join("") +
+      '</sheetData>' +
+      (g.rows.length ? '<autoFilter ref="A1:' + colName(g.cols.length - 1) + (g.rows.length + 1) + '"/>' : '') +
+      '</worksheet>';
+    return { name: nm, xml: xml };
+  });
+  var files = [
+    { name: "[Content_Types].xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      sheets.map(function (sh, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") +
+      '</Types>' },
+    { name: "_rels/.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>' },
+    { name: "xl/workbook.xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      sheets.map(function (sh, i) { return '<sheet name="' + xmlEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join("") +
+      '</sheets></workbook>' },
+    { name: "xl/_rels/workbook.xml.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      sheets.map(function (sh, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
+      '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>' },
+    // styles: 0 plain, 1 bold header, 2 date, 3 amount with paise, 4 whole number
+    { name: "xl/styles.xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd mmm yyyy"/></numFmts>' +
+      '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="5">' +
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+        '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+        '<xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+      '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>' }
+  ].concat(sheets.map(function (sh, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", text: sh.xml }; }));
+  return zipStored(files);
 }
 
 var selTimer = null;
