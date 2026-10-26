@@ -681,7 +681,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v72";
+var APP_BUILD = "finances-shell-v73";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5040,6 +5040,9 @@ function renderEmergency() {
       '<b>' + esc(d.number) + '</b><span>' + esc(label) + '</span></a>';
   }).join("");
 
+  // the address to read out to an ambulance or the police
+  var home = docs.filter(function (d) { return d.doc === "Home address" && d.number; })[0];
+
   // ---- what needs doing
   var expiring = idx.filter(function (x) {
     if (!x.d.valid) return false;
@@ -5066,7 +5069,9 @@ function renderEmergency() {
   var html =
     '<div class="card"><h2>In an emergency</h2>' +
       '<p class="cap" style="margin-bottom:0">Tap a number to call it. Each person below has their identity numbers, health basics and health cover in one place.</p>' +
-      '<div class="em-calls">' + calls + '</div></div>' +
+      '<div class="em-calls">' + calls + '</div>' +
+      (home ? '<p style="margin:14px 0 0;font-size:14px"><span class="muted">Home:</span> <b>' + esc(home.number) + '</b></p>' : '') +
+      '</div>' +
 
     '<div class="grid k4" style="margin-bottom:16px">' +
       '<div class="tile"><div class="lbl">People</div><div class="val">' + people.length + '</div><div class="sub">' + esc(people.join(", ")) + '</div></div>' +
@@ -5103,7 +5108,7 @@ function renderEmergency() {
     '<div class="card"><h2>Doctor, hospital and helplines</h2><p class="cap">Who to ring for care, to block a card, to start a claim or to report fraud.</p>' +
       (function () {
         var rows = idx.filter(function (x) {
-          return (x.d.section === "Contacts" && x.d.person !== "Anyone" && x.d.doc !== "Mobile") ||
+          return (x.d.section === "Contacts" && x.d.person !== "Anyone" && x.d.doc !== "Mobile" && x.d.doc !== "Home address") ||
                  (x.d.section === "Health" && EM_GENERIC.indexOf(x.d.person) >= 0);
         }).filter(keep);
         if (!rows.length) return '<div class="empty">Nothing missing here.</div>';
