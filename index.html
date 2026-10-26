@@ -684,7 +684,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v76";
+var APP_BUILD = "finances-shell-v77";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5155,7 +5155,7 @@ function renderEmergency() {
     }).join("") +
 
     '<p class="cap">Open PDF opens the copy in the private "Emergency Documents" folder on Google Drive, shared only between Vinod and Divya; ' +
-      'it asks you to sign in to Google if this device is not. The Aadhaar PDFs ask for the password listed under each person. ' +
+      'it asks you to sign in to Google if this device is not. ' +
       'DigiLocker holds official copies of Aadhaar, PAN, driving licence and vehicle RC that are accepted in place of the originals. ' +
       'To change anything here, edit the Important Documents sheet in the workbook.</p>';
 
