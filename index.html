@@ -526,6 +526,30 @@ tr.sel-on td, .sel-item.sel-on { background: color-mix(in srgb, var(--series-1) 
 .sel-bar button { font-size: 14px; padding: 8px 14px; min-height: 40px; }
 .sel-bar button.go { background: var(--series-1); color: #fff; border-color: transparent; }
 .sel-bar button.go:disabled { opacity: .5; cursor: default; }
+.sel-sheet {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 31;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 120px); overflow-y: auto;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.25); padding: 16px 18px;
+}
+.sel-sheet h3 { margin: 0 0 12px; font-size: 16px; }
+.sel-sheet .lbl { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 6px; }
+.sel-sheet .opt { display: flex; gap: 10px; align-items: center; font-size: 14.5px; padding: 6px 0; cursor: pointer; }
+.sel-sheet .opt input { width: 19px; height: 19px; margin: 0; accent-color: var(--series-1); }
+.sel-sheet .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.sel-sheet .seg button { font-size: 13.5px; padding: 7px 12px; min-height: 36px; }
+.sel-sheet .seg button[aria-pressed="true"] { background: var(--series-1); color: #fff; border-color: transparent; }
+.sel-sheet select, .sel-sheet input[type=date] { margin: 8px 0 0; font-size: 15px; }
+.sel-sheet .range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sel-sheet .range label { font-size: 12.5px; color: var(--muted); }
+.sel-sheet .range input { width: 100%; margin-bottom: 0; }
+.sel-sheet .note { font-size: 13px; color: var(--muted); margin: 12px 0 0; line-height: 1.45; }
+.sel-sheet .sum { font-size: 14px; font-weight: 600; margin: 14px 0 0; }
+.sel-sheet .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.sel-sheet .acts button { font-size: 14px; padding: 9px 16px; min-height: 40px; }
+.sel-sheet .acts button.go { background: var(--series-1); color: #fff; border-color: transparent; }
+.sel-sheet .acts button.go:disabled { opacity: .5; cursor: default; }
 body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 </style>
 <script>
@@ -606,9 +630,10 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
     <span class="sel-count" id="sel-count">0 selected</span>
     <button id="sel-all">Select all</button>
     <button id="sel-clear">Clear</button>
-    <button class="go" id="sel-export" disabled>Export</button>
+    <button class="go" id="sel-export">Export…</button>
     <button id="sel-done">Done</button>
   </div>
+  <div class="sel-sheet hide" id="sel-sheet" role="dialog" aria-label="Export"></div>
 </div>
 
 <script>
@@ -621,7 +646,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v69";
+var APP_BUILD = "finances-shell-v70";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4873,7 +4898,8 @@ function openMonth(k) {
    them all. Transactions export from the data itself (full date, note, type,
    plain amounts) rather than from what the screen shows. */
 
-var SEL = { on: false, picked: new Map() };
+var SEL = { on: false, picked: new Map(),
+            what: "", period: "any", year: "", month: "", from: "", to: "" };
 
 var txnPos = { list: null, map: null };
 function txnIndex(t) {
@@ -4909,7 +4935,7 @@ function groupTitle(node) {
 }
 
 function txnRecord(t) {
-  return { key: "t" + txnIndex(t), group: "Transactions",
+  return { key: "t" + txnIndex(t), group: "Transactions", date: t.d,
     cols: ["Row", "Date", "Description", "Note", "Category", "Sub-category", "Account", "Type", "Out", "In", "Reference"],
     vals: [t.row || "", t.d, t.ds || "", t.n || "", t.c || "", t.s || "", t.ac || "", t.t || "",
            t.db || "", t.cr || "", t.ref || ""] };
@@ -4945,7 +4971,39 @@ function itemRecord(node) {
   } else {
     add("Item", cellText(node));
   }
-  return { key: group + "|" + vals.join("|").slice(0, 300), group: group, cols: cols, vals: vals };
+  return { key: group + "|" + vals.join("|").slice(0, 300), group: group, cols: cols, vals: vals,
+           date: recordDate(cols, vals) };
+}
+
+/* A row's date, for the export period: "2026-10-25", or "2026-10" when the
+   row is a whole month. Read from the first column headed Date, Month or Next
+   Premium, or a date leading an unheaded row; rows without one have no date. */
+var MON_NUM = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+                jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+function dateFromText(v) {
+  v = String(v);
+  var m = /\b(\d{4})-(\d{2})(-\d{2})?\b/.exec(v);
+  if (m) return m[0];
+  m = /\b(\d{1,2}) (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?(?: · )? (\d{4})\b/i.exec(v);
+  if (m) return m[3] + "-" + MON_NUM[m[2].toLowerCase()] + "-" + ("0" + m[1]).slice(-2);
+  m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,? (\d{4})\b/i.exec(v);
+  if (m) return m[2] + "-" + MON_NUM[m[1].toLowerCase()];
+  // "28 Oct" with no year (Upcoming Bills): the 28 Oct nearest today
+  m = /^(\d{1,2}) (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.exec(v);
+  if (m) {
+    var now = new Date(), y = now.getFullYear(), mm = +MON_NUM[m[2].toLowerCase()];
+    var diff = mm - (now.getMonth() + 1);
+    if (diff > 6) y--; else if (diff < -6) y++;
+    return y + "-" + MON_NUM[m[2].toLowerCase()] + "-" + ("0" + m[1]).slice(-2);
+  }
+  return null;
+}
+function recordDate(cols, vals) {
+  for (var i = 0; i < cols.length; i++) {
+    if (/^(date|month|next premium|next debit|matures)$/i.test(cols[i])) return dateFromText(vals[i]);
+  }
+  // a table with no headings often leads with the date ("Later", "Paid lately")
+  return cols[0] === "Item" ? dateFromText(vals[0]) : null;
 }
 
 function selectableItems() {
@@ -4996,7 +5054,7 @@ function updateSelBar() {
   var n = SEL.picked.size;
   el("sel-count").textContent = selectableItems().length || n
     ? n + " selected" : "Nothing on this tab to select";
-  el("sel-export").disabled = n === 0;
+  if (!el("sel-sheet").classList.contains("hide")) renderExportSheet();
   syncHeaderBoxes();
 }
 
@@ -5065,6 +5123,7 @@ function setSelecting(on, noRedraw) {
   SEL.picked.clear();
   document.body.classList.toggle("selecting", on);
   el("sel-bar").classList.toggle("hide", !on);
+  closeExportSheet();
   el("select").textContent = on ? "Done selecting" : "Select";
   if (on) enhanceSelectable();
   else if (!noRedraw && STATE.tab && DATA) switchTab(STATE.tab, true);   // redraw without the checkboxes
@@ -5077,16 +5136,142 @@ function csvField(v) {
   return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 
-function exportPicked() {
+/* ------------------------------------------------- the export sheet
+
+   Export opens a small sheet: what to export (the ticked rows, or every
+   transaction) and for which period — any time, a calendar or financial year,
+   a month, or a custom From/To range. Ticked rows with no date of their own
+   (an insurance policy, a holding) are kept whatever the period. */
+
+function exportYears() {
+  var ys = {};
+  DATA.txns.forEach(function (t) { ys[t.d.slice(0, 4)] = 1; });
+  return Object.keys(ys).sort().reverse();
+}
+
+function exportPeriod() {
+  var p = SEL.period;
+  if (p === "year" && SEL.year) {
+    if (SEL.year.slice(0, 2) === "FY") {
+      var y = +SEL.year.slice(2);
+      return { from: y + "-04-01", to: (y + 1) + "-03-31", label: "FY " + y + "-" + String(y + 1).slice(2) };
+    }
+    return { from: SEL.year + "-01-01", to: SEL.year + "-12-31", label: SEL.year };
+  }
+  if (p === "month" && SEL.month) return { from: SEL.month + "-01", to: SEL.month + "-31", label: monthLabel(SEL.month) };
+  if (p === "range" && (SEL.from || SEL.to)) {
+    var f = SEL.from || "0000-01-01", t = SEL.to || "9999-12-31";
+    if (f > t) { var x = f; f = t; t = x; }
+    return { from: f, to: t,
+      label: (SEL.from ? longDay(f) : "start") + " to " + (SEL.to ? longDay(t) : "today") };
+  }
+  return null;
+}
+function longDay(d) { return dayLabel(d) + " " + d.slice(0, 4); }
+
+function inPeriod(d, per) {
+  if (!per) return true;
+  if (d.length === 7) return d >= per.from.slice(0, 7) && d <= per.to.slice(0, 7);
+  return d >= per.from && d <= per.to;
+}
+
+// the transactions "All transactions" means: on Transactions, the ones its filters show
+function allTxnsSource() {
+  return STATE.tab === "txns" ? filteredTxns() : DATA.txns;
+}
+
+function exportRecords() {
+  var per = exportPeriod();
+  if (SEL.what === "all") {
+    return allTxnsSource().filter(function (t) { return inPeriod(t.d, per); }).map(txnRecord);
+  }
+  var out = [];
+  SEL.picked.forEach(function (rec) { if (!rec.date || inPeriod(rec.date, per)) out.push(rec); });
+  return out;
+}
+
+function renderExportSheet() {
+  var n = SEL.picked.size;
+  if (!SEL.what || (SEL.what === "ticked" && !n)) SEL.what = n ? "ticked" : "all";
+  var undated = 0;
+  SEL.picked.forEach(function (rec) { if (!rec.date) undated++; });
+  var keys = monthsIndex(DATA.txns).keys;
+  if (!SEL.month) SEL.month = keys[keys.length - 1];
+  var years = exportYears();
+  if (!SEL.year) SEL.year = years[0];
+  var allN = allTxnsSource().length;
+
+  function seg(v, label) {
+    return '<button data-p="' + v + '" aria-pressed="' + (SEL.period === v) + '">' + label + '</button>';
+  }
+  var yearOpts = years.map(function (y) {
+    return '<option value="' + y + '"' + (SEL.year === y ? " selected" : "") + '>' + y + ' (Jan–Dec)</option>';
+  }).join("") + years.map(function (y) {
+    var v = "FY" + y;
+    return '<option value="' + v + '"' + (SEL.year === v ? " selected" : "") + '>FY ' + y + '-' +
+      String(+y + 1).slice(2) + ' (Apr–Mar)</option>';
+  }).join("");
+
+  var recs = exportRecords();
+  var html = '<h3>Export</h3>' +
+    '<div class="lbl">What</div>' +
+    '<label class="opt"><input type="radio" name="sel-what" value="ticked"' + (SEL.what === "ticked" ? " checked" : "") +
+      (n ? "" : " disabled") + '> Ticked rows (' + n + ')</label>' +
+    '<label class="opt"><input type="radio" name="sel-what" value="all"' + (SEL.what === "all" ? " checked" : "") + '> ' +
+      (STATE.tab === "txns" && allN !== DATA.txns.length
+        ? 'All ' + allN + ' transactions matching the filters'
+        : 'All transactions (' + DATA.txns.length + ')') + '</label>' +
+    '<div class="lbl">Period</div>' +
+    '<div class="seg">' + seg("any", "Any time") + seg("year", "Year") + seg("month", "Month") + seg("range", "Date range") + '</div>' +
+    (SEL.period === "year" ? '<select id="sel-year">' + yearOpts + '</select>' : "") +
+    (SEL.period === "month" ? '<select id="sel-month">' + monthOptions(keys, SEL.month, false) + '</select>' : "") +
+    (SEL.period === "range"
+      ? '<div class="range"><div><label for="sel-from">From</label><input type="date" id="sel-from" value="' + SEL.from + '"></div>' +
+        '<div><label for="sel-to">To</label><input type="date" id="sel-to" value="' + SEL.to + '"></div></div>'
+      : "") +
+    (SEL.what === "ticked" && SEL.period !== "any" && undated
+      ? '<p class="note">' + undated + ' of the ticked rows have no date of their own, so they are exported whatever the period.</p>'
+      : "") +
+    '<p class="sum">' + recs.length + (recs.length === 1 ? ' row' : ' rows') + ' will be exported.</p>' +
+    '<div class="acts"><button id="sel-cancel">Cancel</button>' +
+      '<button class="go" id="sel-go"' + (recs.length ? "" : " disabled") + '>Export</button></div>';
+
+  var sh = el("sel-sheet");
+  sh.innerHTML = html;
+  sh.querySelectorAll('input[name="sel-what"]').forEach(function (r) {
+    r.addEventListener("change", function () { SEL.what = r.value; renderExportSheet(); });
+  });
+  sh.querySelectorAll(".seg button").forEach(function (b) {
+    b.addEventListener("click", function () { SEL.period = b.dataset.p; renderExportSheet(); });
+  });
+  [["sel-year", "year"], ["sel-month", "month"], ["sel-from", "from"], ["sel-to", "to"]].forEach(function (pair) {
+    var f = el(pair[0]);
+    if (f) f.addEventListener("change", function () { SEL[pair[1]] = f.value; renderExportSheet(); });
+  });
+  el("sel-cancel").addEventListener("click", closeExportSheet);
+  el("sel-go").addEventListener("click", function () {
+    exportPicked(exportRecords(), exportPeriod());
+    closeExportSheet();
+  });
+}
+
+function openExportSheet() {
+  SEL.what = "";
+  renderExportSheet();
+  el("sel-sheet").classList.remove("hide");
+}
+function closeExportSheet() { el("sel-sheet").classList.add("hide"); }
+
+function exportPicked(records, per) {
   var groups = [], byName = {};
-  SEL.picked.forEach(function (rec) {
+  records.forEach(function (rec) {
     var g = byName[rec.group];
     if (!g) { g = byName[rec.group] = { name: rec.group, cols: [], rows: [] }; groups.push(g); }
     rec.cols.forEach(function (c) { if (g.cols.indexOf(c) < 0) g.cols.push(c); });
     g.rows.push(rec);
   });
   var today = new Date().toISOString().slice(0, 10);
-  var lines = [[csvField("Finances export"), csvField(tabLabel()), today].join(",")];
+  var lines = [[csvField("Finances export"), csvField(tabLabel()), csvField(per ? per.label : "Any time"), today].join(",")];
   groups.forEach(function (g) {
     lines.push("");
     if (groups.length > 1 || g.name !== tabLabel()) lines.push(csvField(g.name));
@@ -5099,7 +5284,9 @@ function exportPicked() {
     });
   });
   // the BOM makes Excel read ₹ and other non-ASCII text correctly
-  var name = "Finances - " + tabLabel().replace(/[\/\\:&]+/g, " ").replace(/\s+/g, " ").trim() + " - " + today + ".csv";
+  var clean = function (x) { return x.replace(/[\/\\:&]+/g, " ").replace(/\s+/g, " ").trim(); };
+  var name = "Finances - " + clean(SEL.what === "all" ? "Transactions" : tabLabel()) + " - " +
+    clean(per ? per.label : today) + ".csv";
   var blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });
 
   /* On the iPad the share sheet offers Save to Files, Mail, Numbers and so on;
@@ -5126,7 +5313,9 @@ new MutationObserver(function () {
 
 el("select").addEventListener("click", function () { setSelecting(!SEL.on); });
 el("sel-done").addEventListener("click", function () { setSelecting(false); });
-el("sel-export").addEventListener("click", exportPicked);
+el("sel-export").addEventListener("click", function () {
+  if (el("sel-sheet").classList.contains("hide")) openExportSheet(); else closeExportSheet();
+});
 el("sel-all").addEventListener("click", function () {
   selectableItems().forEach(function (n) { if (n._selBox) setPicked(n, true); });
   updateSelBar();
