@@ -172,6 +172,19 @@ main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe
 }
 .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 .card p.cap { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+/* Folding cards (foldCards): a titled card opens folded to its heading and a
+   one-line caption; the heading is the tap target, with a chevron. While
+   selecting rows to export everything shows, so folded rows can be ticked. */
+.card h2.fold-h { position: relative; cursor: pointer; padding: 6px 30px 6px 0; margin: -6px 0 -4px;
+  -webkit-tap-highlight-color: transparent; }
+.card h2.fold-h::after { content: ""; position: absolute; right: 6px; top: 50%; width: 8px; height: 8px;
+  margin-top: -6px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg); transition: transform .2s; }
+.card h2.fold-h:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 6px; }
+body:not(.selecting) .card.fold h2.fold-h::after { transform: rotate(-45deg); margin-top: -4px; }
+body:not(.selecting) .card.fold { padding-top: 14px; padding-bottom: 14px; cursor: pointer; }
+body:not(.selecting) .card.fold > :not(h2):not(p.cap) { display: none; }
+body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .grid { display: grid; gap: 16px; }
 /* A grid item defaults to min-width:auto, so it refuses to shrink below its
    own content: a card holding a wide table then pushed the whole page sideways
@@ -684,7 +697,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v78";
+var APP_BUILD = "finances-shell-v79";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6026,6 +6039,66 @@ el("g-token").addEventListener("keydown", function (e) { if (e.key === "Enter") 
     }
   });
 })();
+
+/* Folding cards: every card that starts with a heading opens folded, so each
+   tab's summary fits on one screen; tapping the heading opens it. Cards
+   without a heading (the headline totals, the transaction list) stay open.
+   Opened cards are remembered until the app is closed, so a re-render after a
+   filter change doesn't snap them shut, and the next launch starts folded. */
+var CARD_OPEN = {};
+function cardKey(c, h) {
+  var sec = c.closest("main > section");
+  return (sec ? sec.id : "") + "|" + h.textContent.trim();
+}
+function setFold(c, open) {
+  var h = c.firstElementChild;
+  c.classList.toggle("fold", !open);
+  h.setAttribute("aria-expanded", String(open));
+  if (open) CARD_OPEN[cardKey(c, h)] = true; else delete CARD_OPEN[cardKey(c, h)];
+}
+function foldCards() {
+  document.querySelectorAll("main .card").forEach(function (c) {
+    var h = c.firstElementChild;
+    if (!h || h.tagName !== "H2" || h.classList.contains("fold-h") || c.classList.contains("sel-extra")) return;
+    h.classList.add("fold-h");
+    h.setAttribute("role", "button");
+    h.tabIndex = 0;
+    setFold(c, !!CARD_OPEN[cardKey(c, h)]);
+  });
+}
+function toggleFold(h) {
+  var c = h.parentNode;
+  setFold(c, c.classList.contains("fold"));
+  // a chart drawn while folded had no width to measure; on a wide Mac window
+  // that matters (chartWidth), so redraw the tab where it stands
+  if (!c.classList.contains("fold") && window.innerWidth >= 1400 && c.querySelector("svg")) {
+    var y = window.scrollY;
+    switchTab(STATE.tab, true);
+    window.scrollTo(0, y);
+  }
+}
+document.querySelector("main").addEventListener("click", function (e) {
+  if (document.body.classList.contains("selecting")) return;
+  // a folded card opens from a tap anywhere on it; an open one closes from its heading
+  var c = e.target.closest(".card.fold");
+  var h = c ? c.firstElementChild : e.target.closest("h2.fold-h");
+  if (h) toggleFold(h);
+});
+document.querySelector("main").addEventListener("keydown", function (e) {
+  var h = e.target.closest && e.target.closest("h2.fold-h");
+  if (h && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleFold(h); }
+});
+// every tab renders by replacing its section's HTML; fold the new cards before they paint
+new MutationObserver(foldCards).observe(document.querySelector("main"), { childList: true, subtree: true });
+// anything that scrolls to a row or card (a tapped month, a tile pointing at a
+// card) opens the folded card it sits in first
+var nativeScrollIntoView = Element.prototype.scrollIntoView;
+Element.prototype.scrollIntoView = function () {
+  foldCards();  // a tab re-rendered just now hasn't been through the observer yet
+  var c = this.closest(".card.fold");
+  if (c) setFold(c, true);
+  return nativeScrollIntoView.apply(this, arguments);
+};
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
