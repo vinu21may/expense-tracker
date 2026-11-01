@@ -602,6 +602,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
    so it is one series in one hue — shading by rank would colour by position
    rather than by the thing itself, and say nothing extra that length doesn't. */
 .amix { display: flex; flex-direction: column; gap: 14px; }
+/* Assets: one stacked bar splitting Total invested by type of holding (v83) */
+.astack { display: flex; gap: 3px; height: 22px; margin: 20px 0 12px; border-radius: 11px; overflow: hidden; }
+.astack i { display: block; height: 100%; min-width: 4px; transition: filter .15s; }
+.astack i:hover { filter: brightness(1.15); }
+.astack-legend { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.astack-legend > span { display: inline-grid; grid-template-columns: 12px auto; column-gap: 8px; align-items: center; }
+.astack-legend .k, .astack-legend .v { display: block; white-space: nowrap; }
+.astack-legend .sw { width: 12px; height: 12px; border-radius: 4px; grid-row: span 2; align-self: start; margin-top: 3px; }
+.astack-legend .k { font-size: 12.5px; color: var(--text-secondary); font-weight: 600; }
+.astack-legend .v { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.astack-legend .v small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 5px; }
 .amix-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
 .amix-name { font-weight: 650; font-size: 14.5px; }
 .amix-val { font-weight: 700; font-size: 14.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -866,7 +877,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v82";
+var APP_BUILD = "finances-shell-v83";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2715,6 +2726,28 @@ function renderAssets() {
              ref: refLabel(i.ref), value: i.value };
   })).sort(function (a, b) { return b.value - a.value; });
 
+  // The same holdings grouped by type, for the stacked bar in the headline card.
+  var KIND_LABEL = { "Fixed deposit": "Fixed deposits", "Bond": "Bonds", "ULIP": "ULIPs",
+                     "Guaranteed savings plan": "Savings plans" };
+  var byKind = {};
+  mix.forEach(function (x) { var k = KIND_LABEL[x.kind] || x.kind; byKind[k] = (byKind[k] || 0) + x.value; });
+  var kinds = Object.keys(byKind).map(function (k) { return { name: k, value: byKind[k] }; })
+    .filter(function (k) { return k.value > 0; }).sort(function (a, b) { return b.value - a.value; });
+  var stackHtml = (kinds.length > 1 && totalInvested > 0)
+    ? '<div class="astack" role="img" aria-label="' + esc(kinds.map(function (k) {
+          return k.name + " " + (k.value / totalInvested * 100).toFixed(0) + "%"; }).join(", ")) + '">' +
+        kinds.map(function (k, i) {
+          var pct = k.value / totalInvested * 100;
+          return '<i style="flex:' + k.value.toFixed(0) + ' 1 0;background:' + DONUT_COLOURS[i % DONUT_COLOURS.length] +
+                 '" title="' + esc(k.name) + ': ' + money(k.value) + ' (' + pct.toFixed(1) + '%)"></i>';
+        }).join("") + '</div>' +
+      '<div class="astack-legend">' + kinds.map(function (k, i) {
+          return '<span><i class="sw" style="background:' + DONUT_COLOURS[i % DONUT_COLOURS.length] + '"></i>' +
+                 '<span class="k">' + esc(k.name) + '</span>' +
+                 '<span class="v">' + moneyShort(k.value) + '<small>' + (k.value / totalInvested * 100).toFixed(1) + '%</small></span></span>';
+        }).join("") + '</div>'
+    : "";
+
   var mixMax = mix.reduce(function (m, x) { return Math.max(m, x.value); }, 0);
   var mixHtml = mix.length ? '<div class="amix">' + mix.map(function (x) {
     var pct = totalInvested ? x.value / totalInvested * 100 : 0;
@@ -3056,6 +3089,7 @@ function renderAssets() {
           '<div class="p-val">' + money(invValue) + '</div></div>' +
       '</div>' +
     '</div>' +
+    stackHtml +
     '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal plus the interest earned so far (' + money(fdValue - fdTotal) + '), and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Bank &amp; Cards tab.</p>' +
     '</div>' +
