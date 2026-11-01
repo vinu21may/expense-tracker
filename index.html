@@ -6,61 +6,79 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Finances">
-<meta name="theme-color" content="#f9f9f7">
+<meta name="theme-color" content="#0a0d14">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <title>Finances</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
 /* ---------------------------------------------------------- design tokens */
 :root {
   color-scheme: light;
-  --surface-1:      #fcfcfb;
-  --plane:          #f9f9f7;
-  --text-primary:   #0b0b0b;
-  --text-secondary: #52514e;
-  --muted:          #898781;
-  --grid:           #e1e0d9;
-  --baseline:       #c3c2b7;
-  --border:         rgba(11,11,11,0.10);
-  --series-1:       #2a78d6;   /* income  */
-  --series-2:       #eb6834;   /* expense */
-  --series-3:       #1baf7a;   /* categorical slot 3 (Salary: employers) */
-  --series-4:       #eda100;   /* categorical slot 4 */
-  --seq-500:        #256abf;
-  --seq-450:        #2a78d6;
-  --seq-400:        #3987e5;
-  --seq-350:        #5598e7;
-  --seq-300:        #6da7ec;
-  --seq-250:        #86b6ef;
-  --good:           #0ca30c;
-  --good-text:      #006300;
-  --warning:        #fab219;
-  --critical:       #d03b3b;
-  --shadow:         0 1px 2px rgba(11,11,11,.05), 0 4px 14px rgba(11,11,11,.05);
+  --surface-1:      #ffffff;
+  --surface-2:      #f2f5fa;
+  --plane:          #f4f6fb;
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --muted:          #8a94a6;
+  --grid:           #e6eaf1;
+  --baseline:       #cdd5e1;
+  --border:         rgba(15,23,42,0.09);
+  --series-1:       #4f6bed;   /* income  */
+  --series-2:       #ef6a45;   /* expense */
+  --series-3:       #10a37f;   /* categorical slot 3 (Salary: employers) */
+  --series-4:       #e0a100;   /* categorical slot 4 */
+  --seq-500:        #2f47c4;
+  --seq-450:        #3d57d6;
+  --seq-400:        #4f6bed;
+  --seq-350:        #6d86f2;
+  --seq-300:        #8ea2f5;
+  --seq-250:        #b0bef8;
+  --good:           #16a34a;
+  --good-text:      #15803d;
+  --warning:        #f5a524;
+  --critical:       #dc2f45;
+  --accent:         #4f6bed;
+  --accent-2:       #8b5cf6;
+  --hover:          rgba(15,23,42,0.05);
+  --sheen:          none;
+  --sidebar-bg:     #ffffff;
+  --shadow:         0 1px 2px rgba(15,23,42,.04), 0 8px 24px -14px rgba(15,23,42,.18);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --surface-1:      #1a1a19;
-    --plane:          #0d0d0d;
-    --text-primary:   #ffffff;
-    --text-secondary: #c3c2b7;
-    --muted:          #898781;
-    --grid:           #2c2c2a;
-    --baseline:       #383835;
-    --border:         rgba(255,255,255,0.10);
-    --series-1:       #3987e5;
-    --series-2:       #d95926;
-    --series-3:       #199e70;
-    --series-4:       #c98500;
-    --seq-500:        #3987e5;
-    --seq-450:        #2a78d6;
-    --seq-400:        #256abf;
-    --seq-350:        #1c5cab;
-    --seq-300:        #184f95;
-    --seq-250:        #104281;
-    --good-text:      #0ca30c;
-    --shadow:         0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+    --surface-1:      #121722;
+    --surface-2:      #182031;
+    --plane:          #0a0d14;
+    --text-primary:   #e8ecf4;
+    --text-secondary: #a7b0c2;
+    --muted:          #6f7a90;
+    --grid:           #1f2737;
+    --baseline:       #2b3547;
+    --border:         rgba(148,163,184,0.14);
+    --series-1:       #6c8cff;
+    --series-2:       #ff7a59;
+    --series-3:       #2dd4a0;
+    --series-4:       #f5b83d;
+    --seq-500:        #8aa4ff;
+    --seq-450:        #6c8cff;
+    --seq-400:        #5a78f0;
+    --seq-350:        #4a66d6;
+    --seq-300:        #3b55b8;
+    --seq-250:        #2e4596;
+    --good:           #22c55e;
+    --good-text:      #34d399;
+    --warning:        #fbbf24;
+    --critical:       #f8516a;
+    --accent:         #6c8cff;
+    --accent-2:       #a26bff;
+    --hover:          rgba(148,163,184,0.08);
+    --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
+    --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
+    --shadow:         inset 0 1px 0 rgba(255,255,255,.04), 0 10px 28px -12px rgba(0,0,0,.6);
   }
 }
 
@@ -70,26 +88,35 @@
    handles "follow the phone", which is the default. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-1:      #1a1a19;
-  --plane:          #0d0d0d;
-  --text-primary:   #ffffff;
-  --text-secondary: #c3c2b7;
-  --muted:          #898781;
-  --grid:           #2c2c2a;
-  --baseline:       #383835;
-  --border:         rgba(255,255,255,0.10);
-  --series-1:       #3987e5;
-  --series-2:       #d95926;
-  --series-3:       #199e70;
-  --series-4:       #c98500;
-  --seq-500:        #3987e5;
-  --seq-450:        #2a78d6;
-  --seq-400:        #256abf;
-  --seq-350:        #1c5cab;
-  --seq-300:        #184f95;
-  --seq-250:        #104281;
-  --good-text:      #0ca30c;
-  --shadow:         0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+  --surface-1:      #121722;
+  --surface-2:      #182031;
+  --plane:          #0a0d14;
+  --text-primary:   #e8ecf4;
+  --text-secondary: #a7b0c2;
+  --muted:          #6f7a90;
+  --grid:           #1f2737;
+  --baseline:       #2b3547;
+  --border:         rgba(148,163,184,0.14);
+  --series-1:       #6c8cff;
+  --series-2:       #ff7a59;
+  --series-3:       #2dd4a0;
+  --series-4:       #f5b83d;
+  --seq-500:        #8aa4ff;
+  --seq-450:        #6c8cff;
+  --seq-400:        #5a78f0;
+  --seq-350:        #4a66d6;
+  --seq-300:        #3b55b8;
+  --seq-250:        #2e4596;
+  --good:           #22c55e;
+  --good-text:      #34d399;
+  --warning:        #fbbf24;
+  --critical:       #f8516a;
+  --accent:         #6c8cff;
+  --accent-2:       #a26bff;
+  --hover:          rgba(148,163,184,0.08);
+  --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
+  --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
+  --shadow:         inset 0 1px 0 rgba(255,255,255,.04), 0 10px 28px -12px rgba(0,0,0,.6);
 }
 
 * { box-sizing: border-box; }
@@ -97,8 +124,10 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--plane);
   color: var(--text-primary);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv11", "ss01";
   font-size: 16px;
+  -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
@@ -134,7 +163,7 @@ button {
   background: var(--surface-1); color: var(--text-primary);
   padding: 12px 18px; min-height: 44px;
 }
-button.primary { background: var(--series-1); color: #fff; border-color: transparent; width: 100%; }
+button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; width: 100%; }
 button.primary:disabled { opacity: .55; cursor: default; }
 .err {
   background: color-mix(in srgb, var(--critical) 12%, transparent);
@@ -144,31 +173,130 @@ button.primary:disabled { opacity: .55; cursor: default; }
 .hint { font-size: 12px; color: var(--muted); margin: -10px 0 18px; line-height: 1.5; }
 
 /* ----------------------------------------------------------------- shell */
+/* v80 (1 Nov 2026): the tab strip became a collapsible sidebar. The buttons are
+   still `nav.tabs button[data-tab]`, so every bit of tab logic is unchanged.
+   >=1024px: fixed sidebar beside the page, collapsible to an icon rail (choice
+   remembered in ft.sidebar; default rail below 1280px). <1024px (iPad upright,
+   phone): an off-canvas drawer opened from the header's menu button. */
+:root { --sb-w: 256px; --sb-rail: 76px; --ease: cubic-bezier(.4,0,.2,1); }
+.sidebar {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 40; width: var(--sb-w);
+  display: flex; flex-direction: column;
+  background: var(--sidebar-bg); border-right: 1px solid var(--border);
+  padding: max(16px, env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  transition: width .28s var(--ease), transform .28s var(--ease);
+}
+.sb-head { display: flex; align-items: center; gap: 11px; padding: 2px 6px 16px; min-height: 52px; }
+.sb-logo { width: 36px; height: 36px; flex: none; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--accent-2) 65%, transparent); }
+.sb-logo svg { width: 20px; height: 20px; }
+.sidebar .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; }
+.icon-btn.sb-close { display: none; margin-left: auto; }
+.icon-btn { display: inline-grid; place-items: center; width: 38px; height: 38px; min-height: 0; padding: 0;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); }
+.icon-btn:hover { color: var(--text-primary); background: var(--hover); }
+.icon-btn svg { width: 19px; height: 19px; }
+svg.ic { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav.tabs { flex: 1; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
+nav.tabs::-webkit-scrollbar { display: none; }
+.sb-group { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); padding: 14px 12px 6px; white-space: nowrap; overflow: hidden; }
+.sb-group:first-child { padding-top: 2px; }
+nav.tabs button {
+  position: relative; display: flex; align-items: center; gap: 12px; width: 100%; flex: none;
+  border: none; background: none; border-radius: 11px; padding: 9px 12px; min-height: 42px;
+  font-size: 14px; font-weight: 550; color: var(--text-secondary); text-align: left; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+nav.tabs button svg { width: 19px; height: 19px; flex: none; opacity: .85; }
+nav.tabs button .lbl { overflow: hidden; text-overflow: ellipsis; transition: opacity .2s; }
+nav.tabs button:hover { background: var(--hover); color: var(--text-primary); }
+nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+nav.tabs button[aria-selected="true"] {
+  color: var(--text-primary); font-weight: 650;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent-2) 6%, transparent));
+}
+nav.tabs button[aria-selected="true"] svg { color: var(--accent); opacity: 1; }
+nav.tabs button[aria-selected="true"]::before { content: ""; position: absolute; left: -4px; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 3px; background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
+.sb-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; }
+.sb-toggle { display: flex; align-items: center; gap: 12px; width: 100%; border: none; background: none;
+  padding: 9px 12px; min-height: 40px; border-radius: 11px; font-size: 13.5px; font-weight: 550; color: var(--muted); white-space: nowrap; }
+.sb-toggle:hover { background: var(--hover); color: var(--text-primary); }
+.sb-toggle svg { width: 19px; height: 19px; flex: none; transition: transform .28s var(--ease); }
+.shell { margin-left: var(--sb-w); min-width: 0; transition: margin-left .28s var(--ease); }
+
+/* collapsed to an icon rail (desktop only) */
+body.sb-collapsed .sidebar { width: var(--sb-rail); }
+body.sb-collapsed .shell { margin-left: var(--sb-rail); }
+body.sb-collapsed .sidebar .brand, body.sb-collapsed nav.tabs .lbl, body.sb-collapsed .sb-toggle .lbl { opacity: 0; width: 0; }
+body.sb-collapsed .sb-group { height: 1px; padding: 0; margin: 10px 14px; background: var(--border); color: transparent; }
+body.sb-collapsed .sb-group:first-child { margin-top: 0; }
+body.sb-collapsed nav.tabs button, body.sb-collapsed .sb-toggle { justify-content: center; padding-left: 0; padding-right: 0; gap: 0; }
+body.sb-collapsed .sb-toggle svg { transform: rotate(180deg); }
+body.sb-collapsed .sb-head { justify-content: center; padding-left: 0; padding-right: 0; }
+body.sb-collapsed nav.tabs { overflow: visible; }
+body.sb-collapsed nav.tabs button:hover::after {
+  content: attr(data-tip); position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%);
+  background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border);
+  padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3); pointer-events: none; z-index: 50;
+}
+
+/* header */
 header.app {
   position: sticky; top: 0; z-index: 20;
-  background: color-mix(in srgb, var(--plane) 88%, transparent);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  backdrop-filter: saturate(180%) blur(16px);
+  background: color-mix(in srgb, var(--plane) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
   border-bottom: 1px solid var(--border);
-  padding: max(10px, env(safe-area-inset-top)) 20px 0;
+  padding: max(10px, env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right)) 10px 24px;
 }
-.hrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 10px; }
-.brand { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-right: auto; }
-.stamp { font-size: 12px; color: var(--muted); }
-nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-nav.tabs::-webkit-scrollbar { display: none; }
-nav.tabs button {
-  border: none; background: none; border-radius: 0; padding: 10px 14px 12px;
-  font-size: 15px; font-weight: 600; color: var(--muted);
-  border-bottom: 2.5px solid transparent; white-space: nowrap; min-height: 44px;
+.hrow { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.icon-btn.sb-burger { display: none; }
+.h-title { margin-right: auto; min-width: 0; }
+.page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stamp { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header.app .linkish {
+  display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 13px 7px 11px; min-height: 36px; white-space: nowrap; transition: background .15s, color .15s;
 }
-nav.tabs button[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--series-1); }
+header.app .linkish:hover { color: var(--text-primary); background: var(--hover); }
+header.app .linkish::before { content: ""; width: 16px; height: 16px; flex: none; background: currentColor;
+  -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+#theme   { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'/%3E%3C/svg%3E"); }
+#select  { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='4'/%3E%3Cpath d='m8 12 3 3 5-6'/%3E%3C/svg%3E"); }
+#refresh { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-3-6.7L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3C/svg%3E"); }
+#signout { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpath d='m16 17 5-5-5-5'/%3E%3Cpath d='M21 12H9'/%3E%3C/svg%3E"); }
+.sb-backdrop { position: fixed; inset: 0; z-index: 35; background: rgba(4,7,14,.55);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .28s var(--ease); }
+
+/* iPad upright and phones: the sidebar becomes a drawer */
+@media (max-width: 1023px) {
+  .sidebar { width: min(300px, 86vw); transform: translateX(-104%); box-shadow: 0 0 60px rgba(0,0,0,.45); }
+  body.sb-open .sidebar { transform: none; }
+  body.sb-open .sb-backdrop { opacity: 1; pointer-events: auto; }
+  .shell, body.sb-collapsed .shell { margin-left: 0; }
+  .icon-btn.sb-burger, .icon-btn.sb-close { display: inline-grid; }
+  .sb-foot { display: none; }
+  header.app { padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+}
+@media (max-width: 699px) {
+  header.app .linkish { font-size: 0; gap: 0; padding: 0; width: 36px; justify-content: center; }
+  header.app .linkish::before { width: 17px; height: 17px; }
+  .page-title { font-size: 18px; }
+}
+body.em-only .sb-group { display: none; }
 main { padding: 20px calc(20px + env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-right)); max-width: 1280px; margin: 0 auto; }
 
 /* ----------------------------------------------------------------- cards */
 .card {
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); margin-bottom: 16px;
+  background: var(--sheen), var(--surface-1); border: 1px solid var(--border);
+  border-radius: 18px; padding: 18px 20px; box-shadow: var(--shadow); margin-bottom: 16px;
 }
 .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 .card p.cap { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
@@ -270,8 +398,8 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .acct-card .ac-row > span:first-child { color: var(--muted); }
 .acct-card .ac-row > span:last-child  { text-align: right; }
 .tile {
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 16px; padding: 16px 18px; box-shadow: var(--shadow);
+  background: var(--sheen), var(--surface-1); border: 1px solid var(--border);
+  border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow);
 }
 .tile .lbl { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .tile .val { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -0.025em; margin-top: 6px; line-height: 1.1; }
@@ -330,22 +458,25 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .ov-split > * { min-width: 0; }
 .ov-left { display: grid; gap: 16px; align-content: start; }
 .ov-left > .card, .ov-left > .tile { margin-bottom: 0; }
+/* grid items default to min-width:auto, so the wallet grew to its widest row and ran off a phone screen */
+.ov-left > * { min-width: 0; }
 @media (min-width: 760px) { .ov-split { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; } }
-.wallet { background: #1f1e1d; color: #f0efec; border-radius: 18px; padding: 18px 20px; box-shadow: var(--shadow); }
-:root[data-theme="dark"] .wallet { background: #262624; border: 1px solid rgba(255,255,255,.10); }
-@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .wallet { background: #262624; border: 1px solid rgba(255,255,255,.10); } }
+.wallet { position: relative; overflow: hidden; color: #f4f6ff; border-radius: 20px; padding: 20px 22px;
+  background: radial-gradient(120% 140% at 100% 0%, rgba(162,107,255,.55) 0%, rgba(162,107,255,0) 55%),
+              linear-gradient(135deg, #3d55e0 0%, #4b3fd1 52%, #23185e 100%);
+  border: 1px solid rgba(255,255,255,.14); box-shadow: 0 18px 40px -18px rgba(76,63,209,.7); }
 .wallet .w-tap { cursor: pointer; border-radius: 10px; touch-action: manipulation; }
-.wallet .w-tap:focus-visible { outline: 2px solid #85b7eb; outline-offset: 3px; }
-.wallet .w-lbl { display: flex; justify-content: space-between; font-size: 12.5px; color: #b4b2a9; font-weight: 600; }
-.wallet .w-lbl .go { color: #85b7eb; }
+.wallet .w-tap:focus-visible { outline: 2px solid #dfe5ff; outline-offset: 3px; }
+.wallet .w-lbl { display: flex; justify-content: space-between; font-size: 12.5px; color: #c9cff7; font-weight: 600; }
+.wallet .w-lbl .go { color: #dfe5ff; }
 .wallet .w-big { font-size: clamp(30px, 4.6vw, 40px); font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 2px; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.wallet .w-sub { font-size: 12.5px; color: #b4b2a9; }
-.wallet .w-month { border-radius: 0; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.12); }
+.wallet .w-sub { font-size: 12.5px; color: #c9cff7; }
+.wallet .w-month { border-radius: 0; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.18); }
 .wallet .w-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
-.wallet .w-cell { font-size: 12px; color: #b4b2a9; }
-.wallet .w-cell b { display: block; color: #f0efec; font-size: 16px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wallet .w-cell { font-size: 12px; color: #c9cff7; }
+.wallet .w-cell b { display: block; color: #ffffff; font-size: 16px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wallet .w-cell .dl { font-size: 11.5px; white-space: nowrap; }
-.wallet .dl.good { color: #5dcaa5; } .wallet .dl.bad { color: #f0997b; }
+.wallet .dl.good { color: #86efc4; } .wallet .dl.bad { color: #ffb3a3; }
 @media (max-width: 420px) { .wallet .w-cells { grid-template-columns: 1fr 1fr; } }
 .ov-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
 .ov-chips::-webkit-scrollbar { display: none; }
@@ -605,8 +736,8 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
    inline for that reason, and wrapped because Safari throws on localStorage in
    a private window rather than returning null. */
 (function () {
-  var pref = "system";
-  try { pref = localStorage.getItem("theme") || "system"; } catch (e) {}
+  var pref = "dark";
+  try { pref = localStorage.getItem("theme") || "dark"; } catch (e) {}
   if (pref === "dark" || pref === "light") {
     document.documentElement.setAttribute("data-theme", pref);
   }
@@ -634,30 +765,49 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 
 <!-- =============================================================== the app -->
 <div id="app" class="hide">
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
+    <div class="sb-head">
+      <div class="sb-logo"><svg class="ic" style="stroke-width:2.2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/></svg></div>
+      <div class="brand">Finances</div>
+      <button class="icon-btn sb-close" id="sb-close" aria-label="Close menu"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <nav class="tabs" role="tablist" aria-orientation="vertical" aria-label="Sections">
+      <div class="sb-group" aria-hidden="true">Dashboard</div>
+      <button role="tab" data-tab="overview" data-tip="Overview" aria-label="Overview" aria-selected="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg><span class="lbl">Overview</span></button>
+      <button role="tab" data-tab="monthly" data-tip="Monthly" aria-label="Monthly" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h2M14 14h2M8 17h2"/></svg><span class="lbl">Monthly</span></button>
+      <div class="sb-group" aria-hidden="true">Money</div>
+      <button role="tab" data-tab="spending" data-tip="Spending" aria-label="Spending" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg><span class="lbl">Spending</span></button>
+      <button role="tab" data-tab="txns" data-tip="Transactions" aria-label="Transactions" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg><span class="lbl">Transactions</span></button>
+      <button role="tab" data-tab="accounts" data-tip="Bank &amp; Cards" aria-label="Bank &amp; Cards" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19M6 15h4"/></svg><span class="lbl">Bank &amp; Cards</span></button>
+      <button role="tab" data-tab="bills" data-tip="Upcoming Bills" aria-label="Upcoming Bills" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg><span class="lbl">Upcoming Bills</span></button>
+      <div class="sb-group" aria-hidden="true">Wealth</div>
+      <button role="tab" data-tab="assets" data-tip="Assets" aria-label="Assets" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/></svg><span class="lbl">Assets</span></button>
+      <button role="tab" data-tab="invest" data-tip="Where to Invest" aria-label="Where to Invest" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span class="lbl">Where to Invest</span></button>
+      <button role="tab" data-tab="salary" data-tip="Salary" aria-label="Salary" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg><span class="lbl">Salary</span></button>
+      <button role="tab" data-tab="tax" data-tip="Tax Planning" aria-label="Tax Planning" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 7h6M9 11h6M9 15l6-0"/><path d="M9 15h2"/></svg><span class="lbl">Tax Planning</span></button>
+      <div class="sb-group" aria-hidden="true">Family &amp; safety</div>
+      <button role="tab" data-tab="amma" data-tip="Amma" aria-label="Amma" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span class="lbl">Amma</span></button>
+      <button role="tab" data-tab="insurance" data-tip="Insurance" aria-label="Insurance" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="m9 12 2 2 4-4"/></svg><span class="lbl">Insurance</span></button>
+      <button role="tab" data-tab="emergency" data-tip="Emergency" aria-label="Emergency" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span class="lbl">Emergency</span></button>
+    </nav>
+    <div class="sb-foot">
+      <button class="sb-toggle" id="sb-toggle" aria-label="Collapse sidebar" aria-expanded="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg><span class="lbl">Collapse</span></button>
+    </div>
+  </aside>
+  <div class="sb-backdrop" id="sb-backdrop"></div>
+  <div class="shell">
   <header class="app">
     <div class="hrow">
-      <div class="brand">Finances</div>
-      <div class="stamp" id="stamp"></div>
-      <button class="linkish" id="theme" title="Appearance: follow this device, light, or dark">Appearance</button>
-      <button class="linkish" id="select" title="Tick rows on this tab and export them as a spreadsheet">Select</button>
-      <button class="linkish" id="refresh">Refresh</button>
-      <button class="linkish" id="signout">Sign out</button>
+      <button class="icon-btn sb-burger" id="sb-burger" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="h-title">
+        <div class="page-title" id="page-title">Overview</div>
+        <div class="stamp" id="stamp"></div>
+      </div>
+      <button class="linkish" id="theme" title="Appearance: dark, light, or follow this device">Appearance</button>
+      <button class="linkish" id="select" aria-label="Select rows to export" title="Tick rows on this tab and export them as a spreadsheet">Select</button>
+      <button class="linkish" id="refresh" aria-label="Refresh">Refresh</button>
+      <button class="linkish" id="signout" aria-label="Sign out">Sign out</button>
     </div>
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
-      <button role="tab" data-tab="monthly"   aria-selected="false">Monthly</button>
-      <button role="tab" data-tab="salary"    aria-selected="false">Salary</button>
-      <button role="tab" data-tab="tax"       aria-selected="false">Tax Planning</button>
-      <button role="tab" data-tab="spending"  aria-selected="false">Spending</button>
-      <button role="tab" data-tab="txns"      aria-selected="false">Transactions</button>
-      <button role="tab" data-tab="accounts"  aria-selected="false">Bank &amp; Cards</button>
-      <button role="tab" data-tab="assets"    aria-selected="false">Assets</button>
-      <button role="tab" data-tab="insurance" aria-selected="false">Insurance</button>
-      <button role="tab" data-tab="amma"      aria-selected="false">Amma</button>
-      <button role="tab" data-tab="bills"     aria-selected="false">Upcoming Bills</button>
-      <button role="tab" data-tab="invest"    aria-selected="false">Where to Invest</button>
-      <button role="tab" data-tab="emergency" aria-selected="false">Emergency</button>
-    </nav>
   </header>
   <main>
     <section id="tab-overview"></section>
@@ -675,6 +825,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
     <section id="tab-invest"   class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
+  </div>
   <div class="sel-bar hide" id="sel-bar">
     <span class="sel-count" id="sel-count">0 selected</span>
     <button id="sel-all">Select all</button>
@@ -697,7 +848,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v79";
+var APP_BUILD = "finances-shell-v80";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5851,6 +6002,9 @@ function switchTab(name, keepSelecting) {
   document.querySelectorAll("nav.tabs button").forEach(function (b) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
+  var pt = el("page-title");
+  if (pt) pt.textContent = tabLabel();
+  if (document.body.classList.contains("sb-open")) sbOpen(false);
   ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "emergency", "amma", "invest"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
@@ -5915,6 +6069,54 @@ document.querySelectorAll("nav.tabs button").forEach(function (b) {
   b.addEventListener("click", function () { switchTab(b.dataset.tab); });
 });
 
+/* Sidebar (v80). Wide screens: a fixed sidebar that collapses to an icon rail;
+   the choice is remembered, and with none made it starts as a rail below
+   1280px so the iPad keeps its width for the charts. Narrow screens: a drawer.
+   Charts size themselves to their card when drawn, so the current tab is drawn
+   again once the sidebar has finished moving. */
+var SB_KEY = "ft.sidebar";
+var SB_WIDE = window.matchMedia ? matchMedia("(min-width: 1024px)") : { matches: true };
+
+function sbCollapsedPref() {
+  var v = null;
+  try { v = localStorage.getItem(SB_KEY); } catch (e) {}
+  return v ? v === "collapsed" : window.innerWidth < 1280;
+}
+
+function sbRedraw() {
+  setTimeout(function () { if (window.DATA && STATE.tab) switchTab(STATE.tab, true); }, 320);
+}
+
+function sbApply() {
+  var collapsed = SB_WIDE.matches && sbCollapsedPref();
+  document.body.classList.toggle("sb-collapsed", collapsed);
+  var t = el("sb-toggle");
+  t.setAttribute("aria-expanded", String(!collapsed));
+  t.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  t.querySelector(".lbl").textContent = collapsed ? "Expand" : "Collapse";
+  if (SB_WIDE.matches) sbOpen(false);
+}
+
+function sbOpen(on) {
+  document.body.classList.toggle("sb-open", on);
+  el("sb-burger").setAttribute("aria-expanded", String(on));
+  if (on) { var cur = document.querySelector('nav.tabs button[aria-selected="true"]'); if (cur) cur.focus(); }
+}
+
+el("sb-toggle").addEventListener("click", function () {
+  var next = !document.body.classList.contains("sb-collapsed");
+  try { localStorage.setItem(SB_KEY, next ? "collapsed" : "expanded"); } catch (e) {}
+  sbApply(); sbRedraw();
+});
+el("sb-burger").addEventListener("click", function () { sbOpen(true); });
+el("sb-close").addEventListener("click", function () { sbOpen(false); el("sb-burger").focus(); });
+el("sb-backdrop").addEventListener("click", function () { sbOpen(false); });
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && document.body.classList.contains("sb-open")) { sbOpen(false); el("sb-burger").focus(); }
+});
+if (SB_WIDE.addEventListener) SB_WIDE.addEventListener("change", function () { sbApply(); sbRedraw(); });
+sbApply();
+
 /* Refresh used to reload only the data, so a new version of the app itself (a
    renamed or added tab) never arrived on a device that stayed open. It now asks
    the server which build is current first, and if that is not the one running,
@@ -5937,11 +6139,11 @@ function reloadApp() {
 /* Appearance: follow the device, or force light or dark. Three states rather
    than a two-way switch, so "whatever my phone is doing" stays reachable once
    you have touched it — that is the default and most people want it back. */
-var THEMES = ["system", "light", "dark"];
+var THEMES = ["dark", "light", "system"];
 var THEME_LABEL = { system: "Match device", light: "Light", dark: "Dark" };
 
 function themePref() {
-  try { return localStorage.getItem("theme") || "system"; } catch (e) { return "system"; }
+  try { return localStorage.getItem("theme") || "dark"; } catch (e) { return "dark"; }
 }
 
 function applyTheme(pref) {
@@ -5951,7 +6153,7 @@ function applyTheme(pref) {
   var dark = pref === "dark" || (pref === "system" &&
     window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", dark ? "#0d0d0d" : "#f9f9f7");
+  if (meta) meta.setAttribute("content", dark ? "#0a0d14" : "#f4f6fb");
   var btn = el("theme");
   if (btn) {
     btn.textContent = THEME_LABEL[pref];
