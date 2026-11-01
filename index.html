@@ -4134,13 +4134,15 @@ function renderSalary() {
   }).join("");
 
   var slipRows = slips.slice().reverse().map(function (p) {
-    var extra = [];
-    if (p.bonus)   extra.push("bonus " + money(p.bonus));
+    var extra = [], exg = p.exGratia || 0, other = (p.oneOff || 0) - exg;
+    var amt = function (v) { return v ? money(v) : '<span class="muted">–</span>'; };
     if (p.arrears) extra.push("arrears " + money(p.arrears));
-    if (p.oneOff)  extra.push("one-off " + money(p.oneOff));
+    if (other > 0.5) extra.push("one-off " + money(other));
     if (p.rebuilt) extra.push("no slip on file — rebuilt from Form 16");
     return '<tr><td>' + monthLabel(p.m) + '</td><td>' + esc(styles[p.company].short) + '</td>' +
-      '<td class="num">' + money(p.gross) + '</td><td class="num">' + money(p.tax) + '</td>' +
+      '<td class="num">' + money(p.gross) + '</td>' +
+      '<td class="num">' + amt(p.bonus) + '</td><td class="num">' + amt(exg) + '</td>' +
+      '<td class="num">' + money(p.tax) + '</td>' +
       '<td class="num">' + money(p.pf) + '</td><td class="num">' + money(p.ded) + '</td>' +
       '<td class="num"><b>' + money(p.net) + '</b></td>' +
       '<td class="muted" style="font-size:12.5px">' + extra.join(" · ") + '</td></tr>';
@@ -4262,6 +4264,7 @@ function renderSalary() {
     '<div class="card"><h2>Every payslip</h2>' +
       '<p class="cap">' + slips.length + ' slips, newest first.</p>' +
       '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th>Employer</th><th class="num">Gross</th>' +
+      '<th class="num">Bonus</th><th class="num">Ex-Gratia</th>' +
       '<th class="num">Income tax</th><th class="num">PF</th><th class="num">Deductions</th>' +
       '<th class="num">Take-home</th><th></th></tr></thead><tbody>' + slipRows + '</tbody></table></div>' +
     '</div>';
