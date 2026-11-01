@@ -866,7 +866,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v81";
+var APP_BUILD = "finances-shell-v82";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1558,6 +1558,100 @@ function chartNet(container, keys, map, fit) {
     '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Net saved each month">' + s + '</svg></div>';
   var wrap = container.querySelector(".chartwrap");
   attachTip(wrap, wrap.querySelector("svg"));
+}
+
+/*
+ * Line — net saved month by month, with a dashed three-month average (v82,
+ * Monthly tab). The area is shaded blue above zero and red below so a loss
+ * month reads at a glance; the average carries the trend through one-off
+ * months (an FD reinvested, a year's insurance). With "Typical range" on, a
+ * month beyond the cap is pinned to the edge and labelled with its real value.
+ */
+function chartNetLine(container, keys, map, fit, onPick) {
+  if (!keys.length) { container.innerHTML = '<div class="empty">No months to show.</div>'; return; }
+  var W = chartWidth(container), H = 262, PL = 62, PR = 18, PT = 24, PB = 44;   // PB leaves a row for pinned-low labels
+  var iw = W - PL - PR, ih = H - PT - PB, n = keys.length;
+  var vals = keys.map(function (k) { return net(map[k]); });
+  var avg = vals.map(function (v, i) {
+    var w = vals.slice(Math.max(0, i - 2), i + 1);
+    return w.reduce(function (a, b) { return a + b; }, 0) / w.length;
+  });
+  var ac = axisCap(vals.map(Math.abs));
+  var hi = niceMax(Math.max.apply(null, vals.concat([0])));
+  var lo = -niceMax(Math.abs(Math.min.apply(null, vals.concat([0]))));
+  if (Math.min.apply(null, vals) >= 0) lo = 0;
+  if (fit && ac.any) { hi = Math.min(hi, ac.cap); if (lo < 0) lo = Math.max(lo, -ac.cap); }
+  var span = (hi - lo) || 1;
+  function X(i) { return n === 1 ? PL + iw / 2 : PL + i * iw / (n - 1); }
+  function Y(v) { return PT + ih - ((Math.max(lo, Math.min(hi, v)) - lo) / span) * ih; }
+  var zeroY = Y(0);
+  function path(series) {
+    var d = "";
+    series.forEach(function (v, i) {
+      var x = X(i), y = Y(v);
+      if (!i) { d = "M" + x.toFixed(1) + "," + y.toFixed(1); return; }
+      var px = X(i - 1), py = Y(series[i - 1]), cx = (px + x) / 2;
+      d += " C" + cx.toFixed(1) + "," + py.toFixed(1) + " " + cx.toFixed(1) + "," + y.toFixed(1) + " " + x.toFixed(1) + "," + y.toFixed(1);
+    });
+    return d;
+  }
+  var id = (container.id || "nl") + "-", line = path(vals);
+  var area = line + " L" + X(n - 1).toFixed(1) + "," + zeroY.toFixed(1) + " L" + X(0).toFixed(1) + "," + zeroY.toFixed(1) + " Z";
+
+  var s = '<defs>' +
+    '<linearGradient id="' + id + 'up" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--series-1)" stop-opacity=".38"/>' +
+      '<stop offset="1" stop-color="var(--series-1)" stop-opacity="0"/></linearGradient>' +
+    '<linearGradient id="' + id + 'dn" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--critical)" stop-opacity=".38"/>' +
+      '<stop offset="1" stop-color="var(--critical)" stop-opacity="0"/></linearGradient>' +
+    '<clipPath id="' + id + 'ca"><rect x="0" y="0" width="' + W + '" height="' + zeroY + '"/></clipPath>' +
+    '<clipPath id="' + id + 'cb"><rect x="0" y="' + zeroY + '" width="' + W + '" height="' + (H - zeroY) + '"/></clipPath>' +
+    '</defs>';
+  // gridlines: top, zero, bottom
+  [hi, lo].forEach(function (v) {
+    if (v === 0) return;
+    s += '<line x1="' + PL + '" y1="' + Y(v) + '" x2="' + (W - PR) + '" y2="' + Y(v) + '" stroke="var(--grid)" stroke-dasharray="3 4"/>' +
+         '<text x="' + (PL - 9) + '" y="' + (Y(v) + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">' + moneyShort(v) + '</text>';
+  });
+  s += '<line x1="' + PL + '" y1="' + zeroY + '" x2="' + (W - PR) + '" y2="' + zeroY + '" stroke="var(--baseline)"/>' +
+       '<text x="' + (PL - 9) + '" y="' + (zeroY + 4) + '" text-anchor="end" font-size="11.5" fill="var(--muted)">₹0</text>';
+  s += '<path d="' + area + '" fill="url(#' + id + 'up)" clip-path="url(#' + id + 'ca)"/>' +
+       '<path d="' + area + '" fill="url(#' + id + 'dn)" clip-path="url(#' + id + 'cb)"/>';
+  if (n > 2) s += '<path d="' + path(avg) + '" fill="none" stroke="var(--series-4)" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round"/>';
+  s += '<path d="' + line + '" fill="none" stroke="var(--series-1)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  var every = Math.max(1, Math.ceil(n / 12)), band = n === 1 ? iw : iw / (n - 1);
+  keys.forEach(function (k, i) {
+    var v = vals[i], x = X(i), y = Y(v), clipped = v > hi || v < lo;
+    s += '<circle cx="' + x + '" cy="' + y + '" r="' + (n > 24 ? 2.8 : 3.6) + '" fill="var(--surface-1)" stroke="' +
+         (v < 0 ? "var(--critical)" : "var(--series-1)") + '" stroke-width="2"/>';
+    if (clipped) s += '<text x="' + x + '" y="' + (v > hi ? y - 8 : y + 15) + '" text-anchor="middle" font-size="10" font-weight="600" fill="var(--text-secondary)">' +
+                      moneyShort(v) + '</text>';
+    if (i % every === 0 || i === n - 1)
+      s += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' +
+           monthShort(k) + (k.slice(5, 7) === "01" || i === 0 ? " " + k.slice(2, 4) : "") + '</text>';
+    var a = map[k];
+    var tip = '<div class="t-title">' + monthLabel(k) + '</div>' +
+      '<div class="t-row">Net saved<b>' + money(v) + '</b></div>' +
+      (a.income > 0 ? '<div class="t-row">Savings rate<b>' + (rate(a) * 100).toFixed(1) + '%</b></div>' : '') +
+      (n > 2 ? '<div class="t-row">3-month average<b>' + money(avg[i]) + '</b></div>' : '') +
+      (onPick ? '<div class="t-row muted" style="font-size:12px">Tap to open the month</div>' : '');
+    s += '<rect class="hit" data-k="' + k + '" x="' + (x - band / 2) + '" y="' + PT + '" width="' + band + '" height="' + ih + '" data-tip="' + esc(tip) + '"/>';
+  });
+
+  var anyClip = vals.some(function (v) { return v > hi || v < lo; });
+  container.innerHTML =
+    '<div class="legend"><span><i class="swatch" style="background:var(--series-1)"></i>Net saved</span>' +
+      (n > 2 ? '<span><i class="swatch" style="background:var(--series-4);height:3px;border-radius:2px"></i>3-month average</span>' : '') +
+      '<span><i class="swatch" style="background:var(--critical)"></i>Below zero</span></div>' +
+    '<div class="chartwrap"><svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Net saved each month, with a three-month average">' + s + '</svg></div>' +
+    (anyClip ? '<p class="cap" style="margin:10px 0 0">Months beyond ' + moneyShort(hi) +
+      (lo < 0 ? ' or below ' + moneyShort(lo) : '') + ' are pinned to the edge and labelled with their real value. Switch to Full scale on the chart above to see them in proportion.</p>' : '');
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+  if (onPick) wrap.querySelectorAll("rect.hit").forEach(function (r) {
+    r.addEventListener("click", function () { onPick(r.getAttribute("data-k")); });
+  });
 }
 
 /* =====================================================================
@@ -5091,6 +5185,10 @@ function renderMonthly() {
       (OO ? '. Everyday expenses only: one-off costs are set aside' : '. All expenses, one-off costs included') +
       '. Tap a month to open it below.</p>' +
       '<div id="m-ie"></div></div>' +
+    '<div class="card"><h2>Net saved over time</h2><p class="cap">' + (STATE.mYear || 'All years') +
+      '. Income minus expenses and new money invested, with a three-month average to show the trend' +
+      (OO ? '; one-off costs set aside' : '') + '. Tap a month to open it below.</p>' +
+      '<div id="m-net"></div></div>' +
     '<div class="card"><h2>Month by month</h2>' +
       '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.' +
         (OO ? ' <b>One-off costs are set aside</b>: Expenses and Net saved leave out moving costs, insurance premiums of ' +
@@ -5136,6 +5234,11 @@ function renderMonthly() {
     ik.forEach(function (k) { im[k] = shownAgg(k, map[k], oo); });
     // Set aside: the bars carry everyday spending only, so the chart visibly
     // drops the one-offs and rescales (Vinod: "the graph should change")
+    chartNetLine(el("m-net"), ik, im, STATE.fitScale, function (k) {
+      STATE.mOpen[k] = true; renderMonthly();
+      var r = el("m-row-" + k);
+      if (r) r.scrollIntoView({ block: "start" });
+    });
     chartIncomeExpense(el("m-ie"), ik, im, STATE.fitScale, {
       everyday: OO,
       rerender: renderMonthly,
