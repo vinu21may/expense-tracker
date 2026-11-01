@@ -450,6 +450,24 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 
 /* ---------------------------------------------------------------- charts */
 .chartwrap { position: relative; width: 100%; }
+/* Spending donut (v81): ring on the left, a tappable legend on the right; stacks on a phone. */
+.donut-wrap { display: grid; gap: 18px 32px; align-items: center; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .donut-wrap { grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); } }
+.donut-wrap .chartwrap { max-width: 290px; margin: 0 auto; }
+.donut-wrap path.slice { cursor: pointer; transition: transform .2s var(--ease, ease), opacity .2s; }
+.donut-wrap path.slice.lump { cursor: default; }
+.donut-wrap svg:hover path.slice:not(:hover) { opacity: .55; }
+.donut-legend { display: grid; gap: 2px; min-width: 0; }
+.donut-legend button { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 50px; gap: 10px; align-items: center;
+  width: 100%; border: none; background: none; border-radius: 10px; padding: 8px 10px; min-height: 40px;
+  font-size: 13.5px; font-weight: 550; color: var(--text-secondary); text-align: left; }
+.donut-legend button:hover { background: var(--hover); color: var(--text-primary); }
+.donut-legend button:disabled { cursor: default; background: none; }
+.donut-legend button.on { background: color-mix(in srgb, var(--series-2) 14%, transparent); color: var(--text-primary); font-weight: 650; }
+.donut-legend .sw { width: 12px; height: 12px; border-radius: 4px; }
+.donut-legend .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend .am { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text-primary); white-space: nowrap; }
+.donut-legend .pc { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); text-align: right; }
 
 /* ------------------------------------------------- Overview: split view */
 /* Wallet card, 14-day bars, category shortcuts and bills on the left; the
@@ -848,7 +866,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v80";
+var APP_BUILD = "finances-shell-v81";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1261,6 +1279,66 @@ function chartIncomeExpense(container, keys, map, fit, opts) {
   }
   if (opts.onPick) wrap.querySelectorAll("rect.hit").forEach(function (r) {
     r.addEventListener("click", function () { opts.onPick(r.getAttribute("data-k")); });
+  });
+}
+
+/*
+ * Donut — each category's share of the period's spending (v81). Part-to-whole
+ * is what a donut is for, so it sits above the bars, which stay the place to
+ * compare sizes exactly. Categorical hues for the top seven, a neutral "Other"
+ * for the rest; the legend carries name, amount and share, so no slice depends
+ * on colour alone. The picked category pulls out of the ring and is outlined in
+ * the legend, matching the caret on the bars.
+ */
+var DONUT_COLOURS = ["var(--series-1)", "var(--accent-2)", "var(--series-3)", "var(--series-2)",
+                     "var(--series-4)", "#38bdf8", "#f472b6"];
+
+function chartDonut(container, rows, total, period, onPick, highlight) {
+  if (!rows.length || !(total > 0)) { container.innerHTML = '<div class="empty">No spending recorded in this period.</div>'; return; }
+  var shown = rows.slice(0, DONUT_COLOURS.length), rest = rows.slice(DONUT_COLOURS.length);
+  shown = shown.map(function (r, i) { return { name: r.name, value: r.value, colour: DONUT_COLOURS[i] }; });
+  if (rest.length) shown.push({ name: "Other (" + rest.length + ")", value: rest.reduce(function (a, r) { return a + r.value; }, 0),
+                                colour: "var(--muted)", lump: true });
+
+  var C = 120, R = 112, r = 74, a = -Math.PI / 2, s = "";
+  function pt(rad, ang) { return (C + rad * Math.cos(ang)).toFixed(2) + " " + (C + rad * Math.sin(ang)).toFixed(2); }
+  function arc(a0, a1) {
+    if (a1 - a0 >= 2 * Math.PI - 1e-6) a1 = a0 + 2 * Math.PI - 1e-4;   // a lone slice still draws as a ring
+    var big = a1 - a0 > Math.PI ? 1 : 0;
+    return "M" + pt(R, a0) + " A" + R + " " + R + " 0 " + big + " 1 " + pt(R, a1) +
+           " L" + pt(r, a1) + " A" + r + " " + r + " 0 " + big + " 0 " + pt(r, a0) + " Z";
+  }
+  var legend = "";
+  shown.forEach(function (row) {
+    var frac = row.value / total, a1 = a + frac * 2 * Math.PI;
+    var pct = (frac * 100).toFixed(1);
+    var picked = highlight && row.name === highlight;
+    var mid = (a + a1) / 2, off = picked ? 7 : 0;
+    var tip = '<div class="t-title">' + esc(row.name) + '</div>' +
+      '<div class="t-row">Spent<b>' + money(row.value) + '</b></div>' +
+      '<div class="t-row">Share<b>' + pct + '%</b></div>' +
+      (row.lump ? '' : '<div class="t-row muted" style="font-size:12px">Tap for sub-categories</div>');
+    s += '<path class="slice' + (row.lump ? ' lump' : '') + '" d="' + arc(a, a1) + '" fill="' + row.colour + '"' +
+         ' stroke="var(--surface-1)" stroke-width="2" stroke-linejoin="round"' +
+         (off ? ' transform="translate(' + (off * Math.cos(mid)).toFixed(2) + ' ' + (off * Math.sin(mid)).toFixed(2) + ')"' : '') +
+         ' data-tip="' + esc(tip) + '"' + (row.lump ? '' : ' data-cat="' + esc(row.name) + '"') + '/>';
+    legend += '<button type="button"' + (picked ? ' class="on"' : '') + (row.lump ? ' disabled' : ' data-cat="' + esc(row.name) + '"') + '>' +
+      '<span class="sw" style="background:' + row.colour + '"></span><span class="nm">' + esc(row.name) + '</span>' +
+      '<span class="am">' + moneyShort(row.value) + '</span><span class="pc">' + pct + '%</span></button>';
+    a = a1;
+  });
+  s += '<text x="' + C + '" y="' + (C - 2) + '" text-anchor="middle" font-size="25" font-weight="700" fill="var(--text-primary)"' +
+       ' font-variant-numeric="tabular-nums" letter-spacing="-0.5">' + moneyShort(total) + '</text>' +
+       '<text x="' + C + '" y="' + (C + 20) + '" text-anchor="middle" font-size="12" fill="var(--muted)">spent · ' + esc(period) + '</text>';
+
+  container.innerHTML = '<div class="donut-wrap"><div class="chartwrap"><svg class="chart" viewBox="0 0 240 240"' +
+    ' role="img" aria-label="Share of spending by category, ' + esc(period) + '">' + s + '</svg></div>' +
+    '<div class="donut-legend">' + legend + '</div></div>';
+
+  var wrap = container.querySelector(".chartwrap");
+  attachTip(wrap, wrap.querySelector("svg"));
+  if (onPick) container.querySelectorAll("[data-cat]").forEach(function (n) {
+    n.addEventListener("click", function () { onPick(n.getAttribute("data-cat")); });
   });
 }
 
@@ -2131,6 +2209,10 @@ function renderSpending() {
         '<div class="sub">' + (cats[0] ? (cats[0].value / (total || 1) * 100).toFixed(1) + "% of spending" : "—") + '</div></div>' +
     '</div>' +
 
+    '<div class="card"><h2>Where the money went</h2>' +
+      '<p class="cap">' + (scopeMonth ? monthLabel(scopeMonth) : "All time") + '. Each category\'s share of spending; tap a slice or a name to break it down.</p>' +
+      '<div id="s-donut"></div></div>' +
+
     '<div class="card"><h2>Spending by category</h2>' +
       '<p class="cap">' + (scopeMonth ? monthLabel(scopeMonth) : "All time") + '. Tap a bar to break it down.</p>' +
       '<div id="s-cat"></div></div>' +
@@ -2152,6 +2234,9 @@ function renderSpending() {
   host.innerHTML = html;
 
   chartCategories(el("s-cat"), cats, total, function (cat) {
+    STATE.spendCat = cat; STATE.spendSub = null; renderSpending();
+  }, STATE.spendCat);
+  chartDonut(el("s-donut"), cats, total, scopeMonth ? monthLabel(scopeMonth) : "all time", function (cat) {
     STATE.spendCat = cat; STATE.spendSub = null; renderSpending();
   }, STATE.spendCat);
 
