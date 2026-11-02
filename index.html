@@ -1023,7 +1023,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v103";
+var APP_BUILD = "finances-shell-v104";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5541,7 +5541,9 @@ function sixMonthCard(cat, sub, endK, keys, id) {
       statRow('Average entry', function (x, k) { return money(tot[k] / x.n); }) +
       statRow('Biggest entry', function (x) {
         return money(catAmt(x.big)) + '<div class="muted" style="font-size:11.5px;font-weight:400;max-width:120px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' +
-          esc(x.big.n || x.big.ds) + '">' + dayLabel(x.big.d) + (x.big.n ? ' · ' + esc(x.big.n) : '') + '</div>';
+          esc(x.big.n || x.big.ds) + '">' + dayLabel(x.big.d) + (x.big.n ? ' · ' + esc(x.big.n) : '') + '</div>' +
+          // the card it went on, on its own line so the narrow cell never cuts it (Vinod, 2 Nov 2026)
+          (cardNameOf(x.big) ? '<div style="margin-top:3px"><span class="m-card">' + esc(cardNameOf(x.big)) + '</span></div>' : '');
       });
   } else {
     var subNames = Object.keys(bySub).map(function (n) {
