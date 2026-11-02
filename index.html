@@ -1019,7 +1019,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v95";
+var APP_BUILD = "finances-shell-v96";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3299,19 +3299,6 @@ function renderAssets() {
     }).join("");
     var asOf = rw.length ? rw.map(function (a) { return a.rewards.asOf || ""; }).sort().pop() : "";
 
-    var breakdown =
-      '<div class="acct-cards cv-two">' +
-        '<div class="acct-card cv-good"><div class="ac-name">What the cards gave you</div>' +
-          '<div class="ac-rows">' + (rwRows || '<div class="ac-row"><span>No reward totals recorded yet</span><span></span></div>') + '</div>' +
-          '<div class="ac-sub" style="margin-top:9px">Points are worth ' +
-            rw.filter(function (a) { return a.rewards.value < 1; }).map(function (a) {
-              return '₹' + a.rewards.value.toFixed(2) + ' each as cashback, up to ₹' + a.rewards.best.toFixed(2) + ' on SmartBuy flights and hotels';
-            }).join("; ") + '. NeuCoins are ₹1 each.' + (asOf ? ' Totals to the ' + dayLabel(asOf) + ' ' + asOf.slice(0, 4) + ' statement.' : '') + '</div></div>' +
-      '</div>' +
-      '<h3 class="cv-h">What the cards cost you</h3>' +
-      '<p class="cap">Every debit on the card statements since ' + dayLabel(first) + ' ' + first.slice(0, 4) +
-        ' that is a charge rather than a purchase.</p>' + costTable;
-
     // Smart EMI: every loan on file, with what it has cost so far
     var loans = (DATA.emis || []).slice().sort(function (a, b) { return (a.booked || "") < (b.booked || "") ? -1 : 1; });
     var emiCostTotal = 0, emiPaidT = 0, emiFeeT = 0, lostPts = 0, lostLo = 0, lostHi = 0;
@@ -3374,6 +3361,23 @@ function renderAssets() {
         '<p class="cap" style="margin:8px 0 0">Points lost are worked out at 4 points per ₹150, the card\'s earn rate; ' +
           'they match the reversals on the statements to within about 5%. GST of 18% on the interest and fees is extra.</p>'
       : "";
+
+    // built after the EMI table, so the gave-you box can show the points the EMIs cost
+    var breakdown =
+      '<div class="acct-cards cv-two">' +
+        '<div class="acct-card cv-good"><div class="ac-name">What the cards gave you</div>' +
+          '<div class="ac-rows">' + (rwRows || '<div class="ac-row"><span>No reward totals recorded yet</span><span></span></div>') +
+            (lostPts ? '<div class="ac-row cv-tot"><span>Of the points taken back, lost to Smart EMI</span><span class="down">−' +
+              inr0.format(lostPts) + ' pts <span class="muted">≈ ' + range(lostLo, lostHi) + '</span></span></div>' : '') +
+          '</div>' +
+          '<div class="ac-sub" style="margin-top:9px">Points are worth ' +
+            rw.filter(function (a) { return a.rewards.value < 1; }).map(function (a) {
+              return '₹' + a.rewards.value.toFixed(2) + ' each as cashback, up to ₹' + a.rewards.best.toFixed(2) + ' on SmartBuy flights and hotels';
+            }).join("; ") + '. NeuCoins are ₹1 each.' + (asOf ? ' Totals to the ' + dayLabel(asOf) + ' ' + asOf.slice(0, 4) + ' statement.' : '') + '</div></div>' +
+      '</div>' +
+      '<h3 class="cv-h">What the cards cost you</h3>' +
+      '<p class="cap">Every debit on the card statements since ' + dayLabel(first) + ' ' + first.slice(0, 4) +
+        ' that is a charge rather than a purchase.</p>' + costTable;
 
     // what the bank-account UPI / debit-card spending of the last 12 months could earn on a card
     var NOT_ON_CARD = /^(Housing & Home|Taxes & Fees|Uncategorized|Gifts & Donations|Loans & EMI|Investments|Insurance|Transfer|Education)$/;
