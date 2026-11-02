@@ -46,6 +46,8 @@
   --sheen:          none;
   --sidebar-bg:     #ffffff;
   --glass-ink:      #0f172a;
+  --track:          rgba(15,23,42,.06);
+  --bar-shadow:     rgba(30,41,90,.22);
   --glass-surface:  rgba(255,255,255,.64);
   --glass-sheen:    linear-gradient(160deg, rgba(255,255,255,.95), rgba(255,255,255,0) 55%);
   --glass-edge:     rgba(255,255,255,.85);
@@ -88,6 +90,8 @@
     --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
     --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
     --glass-ink:      #ffffff;
+    --track:          rgba(255,255,255,.06);
+    --bar-shadow:     rgba(0,0,0,.55);
     --glass-surface:  rgba(24,30,48,.52);
     --glass-sheen:    linear-gradient(160deg, rgba(255,255,255,.075), rgba(255,255,255,.015) 42%, rgba(255,255,255,0) 62%);
     --glass-edge:     rgba(255,255,255,.09);
@@ -135,6 +139,8 @@
   --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
   --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
   --glass-ink:      #ffffff;
+  --track:          rgba(255,255,255,.06);
+  --bar-shadow:     rgba(0,0,0,.55);
   --glass-surface:  rgba(24,30,48,.52);
   --glass-sheen:    linear-gradient(160deg, rgba(255,255,255,.075), rgba(255,255,255,.015) 42%, rgba(255,255,255,0) 62%);
   --glass-edge:     rgba(255,255,255,.09);
@@ -574,7 +580,7 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .ov-chips button { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   padding: 9px 14px; min-height: 44px; border-radius: 14px; font-size: 13px; font-weight: 600; text-align: left; box-shadow: var(--shadow); }
 .ov-chips button small { font-size: 12px; font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.ov-chips button .bar { display: block; height: 3px; border-radius: 2px; background: var(--series-1); margin-top: 3px; }
+.ov-chips button .bar { display: block; height: 5px; border-radius: 999px; background: var(--series-1); margin-top: 4px; }
 .ov-recent .r-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-top: 1px solid var(--grid); }
 .ov-recent .r-row:first-of-type { border-top: none; }
 .ov-recent .r-ic { width: 32px; height: 32px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
@@ -619,8 +625,8 @@ svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
 .inv-barcell { min-width: 110px; }
 .inv-tbl td:first-child { min-width: 240px; }
 .inv-tbl td:nth-child(3) { min-width: 90px; }
-.inv-bar { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 6px; overflow: hidden; }
-.inv-bar span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+.inv-bar { height: 8px; border-radius: 999px; background: var(--track); margin-top: 6px; }
+.inv-bar span { display: block; height: 100%; background: var(--series-1); border-radius: 999px; }
 .inv-detail { margin-left: 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 760px; }
 .inv-detail .tax-lines { margin: 0 0 8px; }
 .inv-detail p { margin: 6px 0; }
@@ -670,7 +676,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .goal-head { display: flex; align-items: baseline; gap: 10px; font-size: 14px; margin-bottom: 8px; }
 .goal-head .g-name { font-weight: 600; }
 .goal-head .g-amt { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.bar { height: 10px; background: var(--grid); border-radius: 999px; overflow: hidden; }
+.bar { height: 12px; background: var(--track); border-radius: 999px; }
 .bar > i { display: block; height: 100%; background: var(--series-1); border-radius: 999px; }
 
 /* Asset mix: one ranked bar per holding. A single measure (what each is worth)
@@ -678,8 +684,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
    rather than by the thing itself, and say nothing extra that length doesn't. */
 .amix { display: flex; flex-direction: column; gap: 14px; }
 /* Assets: one stacked bar splitting Total invested by type of holding (v83) */
-.astack { display: flex; gap: 3px; height: 22px; margin: 20px 0 12px; border-radius: 11px; overflow: hidden; }
-.astack i { display: block; height: 100%; min-width: 4px; transition: filter .15s; }
+.astack { display: flex; gap: 4px; height: 26px; margin: 20px 0 12px; border-radius: 13px; padding: 3px; background: var(--track);
+  box-shadow: 0 6px 14px -6px var(--bar-shadow); }
+.astack i { display: block; height: 100%; min-width: 4px; transition: filter .15s; position: relative; border-radius: 7px; }
+.astack i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.2) 22%, rgba(255,255,255,0) 55%, rgba(0,0,0,.18)); }
 .astack i:hover { filter: brightness(1.15); }
 .astack-legend { display: flex; flex-wrap: wrap; gap: 10px 26px; }
 .astack-legend > span { display: inline-grid; grid-template-columns: 12px auto; column-gap: 8px; align-items: center; }
@@ -699,11 +708,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   font-variant-numeric: tabular-nums; font-size: 11px; opacity: .85;
   white-space: nowrap; }
 .amix-pct { text-align: right; font-variant-numeric: tabular-nums; }
-.amix-track { grid-column: 1 / -1; height: 9px; background: var(--grid);
-  border-radius: 999px; overflow: hidden; margin-top: 3px; }
+.amix-track { grid-column: 1 / -1; height: 12px; background: var(--track);
+  border-radius: 999px; margin-top: 4px; }
 .amix-track > i { display: block; height: 100%; background: var(--seq-450);
   border-radius: 999px; transition: width .5s ease; }
-.amix-row:hover .amix-track > i { background: var(--seq-500); }
+.amix-row:hover .amix-track > i { background-color: var(--seq-500); }
 .amix-foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid);
   display: flex; justify-content: space-between; font-size: 13.5px; }
 .amix-foot b { font-variant-numeric: tabular-nums; }
@@ -725,13 +734,19 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .mat-grid { position: absolute; inset: 0; }
 .mat-grid > u { position: absolute; top: -2px; bottom: -2px; width: 1px;
   background: var(--grid); text-decoration: none; }
-.mat-track { position: absolute; inset: 0; background: var(--grid); border-radius: 999px; }
+.mat-track { position: absolute; inset: 0; background: var(--track); border-radius: 999px; }
 .mat-fill { position: absolute; left: 0; top: 0; bottom: 0; min-width: 4px;
   background: var(--seq-350); border-radius: 999px; }
+/* v88: the same "clay" lighting the chart bars get — bright top, deeper bottom, soft shadow.
+   Fills keep their own colour; this only adds the light. A new HTML bar fill joins this list. */
+.bar > i, .amix-track > i, .mat-fill, .inv-bar span, .ov-chips button .bar, .clay {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,.18) 30%, rgba(255,255,255,0) 60%, rgba(0,0,0,.16)) !important;
+  box-shadow: 0 3px 8px -3px var(--bar-shadow);
+}
 .mat-dot { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%;
   background: var(--seq-500); transform: translate(-50%, -50%);
   box-shadow: 0 0 0 2px var(--surface-1); }
-.mat-row.soon .mat-fill { background: var(--warning); }
+.mat-row.soon .mat-fill { background-color: var(--warning); }
 .mat-row.soon .mat-dot { background: var(--warning); }
 /* Value now and at maturity, labelled, on their own line above each bar. */
 .mat-vals { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline;
@@ -1141,21 +1156,23 @@ function accountMovement(txns) {
    ===================================================================== */
 
 /* Rounded corners on the data end only, anchored to the baseline. */
+/* v88 (2 Nov 2026): bars are soft pills, every corner rounded (the "clay" bar look
+   Vinod picked from Dribbble). The radius follows the bar's thickness, so thin
+   monthly bars and thick category bars both read as pills; r is a floor. */
+function pill(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  return "M" + (x + r) + "," + y + "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
+         "V" + (y + h - r) + "Q" + (x + w) + "," + (y + h) + " " + (x + w - r) + "," + (y + h) +
+         "H" + (x + r) + "Q" + x + "," + (y + h) + " " + x + "," + (y + h - r) +
+         "V" + (y + r) + "Q" + x + "," + y + " " + (x + r) + "," + y + "Z";
+}
 function barUp(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h);
   if (h <= 0.6) return "";
-  return "M" + x + "," + (y + h) +
-         "V" + (y + r) + "Q" + x + "," + y + " " + (x + r) + "," + y +
-         "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
-         "V" + (y + h) + "Z";
+  return pill(x, y, w, h, Math.max(r, w * 0.34));
 }
 function barRight(x, y, w, h, r) {
-  r = Math.min(r, h / 2, w);
   if (w <= 0.6) return "";
-  return "M" + x + "," + y +
-         "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
-         "V" + (y + h - r) + "Q" + (x + w) + "," + (y + h) + " " + (x + w - r) + "," + (y + h) +
-         "H" + x + "Z";
+  return pill(x, y, w, h, Math.max(r, h * 0.42));
 }
 
 function niceMax(v) {
@@ -1259,9 +1276,12 @@ var WIDE_FROM = 1300, WIDE_SCALE = 1.35;
     var host = document.createElementNS(NS, "svg");
     host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.setAttribute("aria-hidden", "true");
     host.style.position = "absolute";
+    // v88: "clay" lighting — a bright top fading to a deeper bottom — and a soft shadow underneath
     host.innerHTML = '<defs><linearGradient id="glass-grad" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".48" stop-color="#fff" stop-opacity=".08"/>' +
-      '<stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".10"/></linearGradient></defs>';
+      '<stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".22" stop-color="#fff" stop-opacity=".22"/>' +
+      '<stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".18"/></linearGradient>' +
+      '<filter id="bar-shadow" x="-60%" y="-30%" width="220%" height="190%">' +
+      '<feDropShadow dx="0" dy="4" stdDeviation="4" style="flood-color: var(--bar-shadow)"/></filter></defs>';
     document.body.appendChild(host);
   }
   function glassify(svg) {
@@ -1269,14 +1289,12 @@ var WIDE_FROM = 1300, WIDE_SCALE = 1.35;
     svg.querySelectorAll("path[fill], rect[fill]").forEach(function (el) {
       var f = el.getAttribute("fill");
       if (!f || f === "none" || f === "transparent" || f.indexOf("url(") === 0) return;
-      if (el.classList.contains("hit") || el.closest("clipPath, defs")) return;
+      if (el.classList.contains("hit") || el.classList.contains("track") || el.closest("clipPath, defs")) return;
+      if (!el.getAttribute("fill-opacity")) el.setAttribute("filter", "url(#bar-shadow)");
       var o = el.cloneNode(false);
       ["class", "data-tip", "data-cat", "data-k", "fill-opacity", "stroke", "stroke-width", "id"].forEach(function (a) { o.removeAttribute(a); });
       o.setAttribute("class", "glass-sheen");
       o.setAttribute("fill", "url(#glass-grad)");
-      o.setAttribute("stroke", "rgba(255,255,255,.28)");
-      o.setAttribute("stroke-width", "1");
-      o.setAttribute("vector-effect", "non-scaling-stroke");
       if (el.getAttribute("fill-opacity")) o.setAttribute("opacity", el.getAttribute("fill-opacity"));
       el.parentNode.insertBefore(o, el.nextSibling);
     });
@@ -1340,7 +1358,7 @@ function chartIncomeExpense(container, keys, map, fit, opts) {
         // everyday part solid, the one-off part stacked on top and faded
         var he = Math.min(a.expense, top) / top * ih;
         s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '" fill-opacity="0.32"/>' +
-             '<rect x="' + bx + '" y="' + (base - he) + '" width="' + bw + '" height="' + he + '" fill="' + b[2] + '"/>';
+             '<path d="' + barUp(bx, base - he, bw, he, 4) + '" fill="' + b[2] + '"/>';
       } else {
         s += '<path d="' + barUp(bx, base - h, bw, h, 4) + '" fill="' + b[2] + '"/>';
       }
@@ -1563,7 +1581,7 @@ function chartCategories(container, rows, total, onPick, highlight) {
   var s = "";
   shown.forEach(function (r, i) {
     var y = PT + i * rowH;
-    var bh = 16;
+    var bh = 18;
     var by = y + (rowH - bh) / 2 - 1;
     var w = Math.max(1, (r.value / max) * iw);
     var colour = ramp[Math.min(ramp.length - 1, Math.floor(i / Math.max(1, shown.length / ramp.length)))];
@@ -1579,7 +1597,8 @@ function chartCategories(container, rows, total, onPick, highlight) {
          (picked ? "var(--text-primary)" : "var(--text-secondary)") + '"' +
          (picked ? ' font-weight="700"' : "") + '>' +
          esc(picked ? "▸ " + label : label) + '</text>';
-    s += '<path d="' + barRight(PL, by, w, bh, 4) + '" fill="' + colour + '"/>';
+    s += '<path class="track" d="' + barRight(PL, by, iw, bh, 4) + '" fill="var(--track)"/>' +
+         '<path d="' + barRight(PL, by, w, bh, 4) + '" fill="' + colour + '"/>';
     s += '<text x="' + (PL + w + 10) + '" y="' + (by + 12) + '" font-size="12.5" fill="var(--text-primary)" font-variant-numeric="tabular-nums">' +
          moneyShort(r.value) + '</text>';
     s += '<text x="' + (W - 6) + '" y="' + (by + 12) + '" text-anchor="end" font-size="11.5" fill="var(--muted)" font-variant-numeric="tabular-nums">' +
@@ -1732,10 +1751,8 @@ function chartNet(container, keys, map, fit) {
     if (v >= 0) {
       d = barUp(x, y, bw, h, 4);
     } else {
-      // mirrored: rounded end at the bottom, anchored to the zero line
-      d = "M" + x + "," + zeroY + "V" + (y - 4) + "Q" + x + "," + y + " " + (x + 4) + "," + y +
-          "H" + (x + bw - 4) + "Q" + (x + bw) + "," + y + " " + (x + bw) + "," + (y - 4) +
-          "V" + zeroY + "Z";
+      // hangs from the zero line
+      d = barUp(x, zeroY, bw, h, 4);
     }
     s += '<path d="' + d + '" fill="' + colour + '"/>';
     if (over) {
@@ -4096,7 +4113,7 @@ function ctcCard(styles, meta) {
         '<div class="muted" style="font-size:12px">' + esc(st.short) + '</div></td>' +
       '<td class="num"><b>' + money(r.ctc) + '</b><div class="muted" style="font-size:12px">' +
         money(r.ctc / 12) + ' a month</div>' +
-        '<div style="height:6px;border-radius:3px;margin-top:6px;background:' + st.colour + ';width:' +
+        '<div class="clay" style="height:8px;border-radius:999px;margin-top:6px;background-color:' + st.colour + ';width:' +
           Math.round(r.ctc / max * 100) + '%;margin-left:auto"></div></td>' +
       '<td class="num">' + (prev ? '<b>' + pctLabel(r.ctc / prev.ctc - 1) + '</b><div class="muted" style="font-size:12px">+' +
           money(r.ctc - prev.ctc) + '</div>' : '<span class="muted">joining</span>') + '</td>' +
