@@ -1906,7 +1906,7 @@ function chartNetLine(container, keys, map, fit, onPick) {
    ===================================================================== */
 
 var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "", mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
-              tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: "", tLimit: 200,
+              tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: null, tLimit: 200,
               insFilter: "", billFilter: "" };
 
 /* A summary tile that can be tapped. `key` is what it filters to; the tile
@@ -2610,8 +2610,9 @@ function filteredTxns() {
     if (STATE.tCat && t.c !== STATE.tCat) return false;
     if (STATE.tSub && t.s !== STATE.tSub) return false;
     if (STATE.tType && t.t !== STATE.tType) return false;
-    if (STATE.tMonth && monthKey(t.d) !== STATE.tMonth) return false;
     var rowHit = t.row && (q === String(t.row) || q === "#" + t.row);
+    // a typed row number finds that row whatever month is picked
+    if (STATE.tMonth && monthKey(t.d) !== STATE.tMonth && !rowHit) return false;
     if (q && !rowHit && (t.ds + " " + t.c + " " + t.s + " " + t.m + " " + t.n + " " + (t.ref || ""))
                .toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -2620,6 +2621,13 @@ function filteredTxns() {
 
 function renderTxns() {
   var idx = monthsIndex(DATA.txns);
+  // v92 (2 Nov 2026): the tab opens on the current month (null = not chosen yet).
+  // Early in a month, before anything is recorded for it, the latest month with
+  // entries stands in. "All time" in the Month menu or Clear shows everything.
+  if (STATE.tMonth === null) {
+    var d0 = new Date(), cur = d0.getFullYear() + "-" + String(d0.getMonth() + 1).padStart(2, "0");
+    STATE.tMonth = idx.map[cur] ? cur : (idx.keys[idx.keys.length - 1] || "");
+  }
   var accts = {}, cats = {};
   DATA.txns.forEach(function (t) { accts[t.ac] = 1; cats[t.c] = 1; });
   var acctList = Object.keys(accts).sort();
