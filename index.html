@@ -45,6 +45,8 @@
   --hover:          rgba(15,23,42,0.05);
   --sheen:          none;
   --sidebar-bg:     #ffffff;
+  --glass-ink:      #0f172a;
+  --glass-hi:       rgba(255,255,255,.85);
   --shadow:         0 1px 2px rgba(15,23,42,.04), 0 8px 24px -14px rgba(15,23,42,.18);
 }
 @media (prefers-color-scheme: dark) {
@@ -78,6 +80,8 @@
     --hover:          rgba(148,163,184,0.08);
     --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
     --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
+    --glass-ink:      #ffffff;
+    --glass-hi:       rgba(255,255,255,.22);
     --shadow:         inset 0 1px 0 rgba(255,255,255,.04), 0 10px 28px -12px rgba(0,0,0,.6);
   }
 }
@@ -116,6 +120,8 @@
   --hover:          rgba(148,163,184,0.08);
   --sheen:          linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 42%);
   --sidebar-bg:     linear-gradient(180deg, #0f1424 0%, #0a0d14 100%);
+  --glass-ink:      #ffffff;
+  --glass-hi:       rgba(255,255,255,.22);
   --shadow:         inset 0 1px 0 rgba(255,255,255,.04), 0 10px 28px -12px rgba(0,0,0,.6);
 }
 
@@ -189,7 +195,7 @@ button.primary:disabled { opacity: .55; cursor: default; }
 .sb-head { display: flex; align-items: center; gap: 11px; padding: 2px 6px 16px; min-height: 52px; }
 .sb-logo { width: 36px; height: 36px; flex: none; border-radius: 11px; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
-  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--accent-2) 65%, transparent); }
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 0 0 1px rgba(255,255,255,.18), 0 8px 20px -6px color-mix(in srgb, var(--accent-2) 65%, transparent); }
 .sb-logo svg { width: 20px; height: 20px; }
 .sidebar .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; }
 .icon-btn.sb-close { display: none; margin-left: auto; }
@@ -206,11 +212,36 @@ nav.tabs::-webkit-scrollbar { display: none; }
 .sb-group:first-child { padding-top: 2px; }
 nav.tabs button {
   position: relative; display: flex; align-items: center; gap: 12px; width: 100%; flex: none;
-  border: none; background: none; border-radius: 11px; padding: 9px 12px; min-height: 42px;
+  border: none; background: none; border-radius: 12px; padding: 5px 10px; min-height: 42px;
   font-size: 14px; font-weight: 550; color: var(--text-secondary); text-align: left; white-space: nowrap;
   transition: background .15s, color .15s;
 }
-nav.tabs button svg { width: 19px; height: 19px; flex: none; opacity: .85; }
+/* v85 (2 Nov 2026): glass icon tiles. Each tab icon sits in a frosted tile tinted
+   with its own --tint; the picked tab's tile glows. --glass-ink/--glass-hi live
+   in all three token blocks. A new tab needs a --tint line below. */
+nav.tabs button { --tint: var(--accent); }
+nav.tabs button[data-tab="monthly"]   { --tint: #a26bff; }
+nav.tabs button[data-tab="spending"]  { --tint: #ff7a59; }
+nav.tabs button[data-tab="txns"]      { --tint: #38bdf8; }
+nav.tabs button[data-tab="accounts"]  { --tint: #2dd4a0; }
+nav.tabs button[data-tab="bills"]     { --tint: #f5b83d; }
+nav.tabs button[data-tab="assets"]    { --tint: #4ade80; }
+nav.tabs button[data-tab="invest"]    { --tint: #f472b6; }
+nav.tabs button[data-tab="salary"]    { --tint: #facc15; }
+nav.tabs button[data-tab="tax"]       { --tint: #fb923c; }
+nav.tabs button[data-tab="amma"]      { --tint: #fb7185; }
+nav.tabs button[data-tab="insurance"] { --tint: #22d3ee; }
+nav.tabs button[data-tab="emergency"] { --tint: #ef4444; }
+nav.tabs button svg {
+  width: 32px; height: 32px; padding: 7px; box-sizing: border-box; flex: none; border-radius: 10px;
+  color: color-mix(in srgb, var(--tint) 72%, var(--glass-ink));
+  background: linear-gradient(155deg, var(--glass-hi), transparent 58%), color-mix(in srgb, var(--tint) 20%, transparent);
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 0 0 1px color-mix(in srgb, var(--tint) 32%, transparent),
+    0 6px 14px -9px var(--tint);
+  -webkit-backdrop-filter: blur(10px) saturate(170%); backdrop-filter: blur(10px) saturate(170%);
+  transition: background .15s, box-shadow .15s, color .15s;
+}
+nav.tabs button:hover svg { background: linear-gradient(155deg, var(--glass-hi), transparent 58%), color-mix(in srgb, var(--tint) 30%, transparent); }
 nav.tabs button .lbl { overflow: hidden; text-overflow: ellipsis; transition: opacity .2s; }
 nav.tabs button:hover { background: var(--hover); color: var(--text-primary); }
 nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -218,7 +249,10 @@ nav.tabs button[aria-selected="true"] {
   color: var(--text-primary); font-weight: 650;
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent-2) 6%, transparent));
 }
-nav.tabs button[aria-selected="true"] svg { color: var(--accent); opacity: 1; }
+nav.tabs button[aria-selected="true"] svg { color: #fff;
+  background: linear-gradient(155deg, rgba(255,255,255,.38), transparent 60%), color-mix(in srgb, var(--tint) 78%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 0 0 1px color-mix(in srgb, var(--tint) 60%, #fff 10%),
+    0 8px 20px -6px color-mix(in srgb, var(--tint) 75%, transparent); }
 nav.tabs button[aria-selected="true"]::before { content: ""; position: absolute; left: -4px; top: 9px; bottom: 9px; width: 3px;
   border-radius: 3px; background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
 .sb-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; }
