@@ -499,7 +499,8 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .acct-cards .acct-card.cv-good { --tint: #2dd4a0; }
 .acct-cards .acct-card.cv-bad  { --tint: #ff7a59; }
 .cv-two { margin-top: 12px; }
-@media (min-width: 1100px) { .cv-two { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 620px) { .cv-two { grid-template-columns: 1fr; } }
+table.cv-cost tfoot td { border-top: 1px solid var(--border); }
 .cv-tot { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
 .cv-h { font-size: 15px; margin: 22px 0 6px; }
 .cv-gain { border: 1px solid color-mix(in srgb, var(--good) 35%, var(--border)); border-radius: 14px; padding: 14px 16px;
@@ -1018,7 +1019,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v93";
+var APP_BUILD = "finances-shell-v94";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3220,14 +3221,29 @@ function renderAssets() {
       ["chg",  "Interest and late charges", /FINANCE CHARGE|LATE PAY|OVERLIMIT|INTEREST CHARGE/i],
       ["gst",  "GST on all of the above",   /^\s*(IGST|CGST|SGST)/i]
     ];
-    var cost = {}, costTotal = 0;
-    COST.forEach(function (k) { cost[k[0]] = 0; });
+    // one column per card (Vinod, 2 Nov 2026: "show in table format for both the
+    // cards"), matched on the last four digits like the EMI lookup above. A card
+    // number with no Account Details row (the pre-upgrade Regalia, ··0130) gets
+    // its own column rather than being folded silently into another card.
+    function tail4(v) { return String(v || "").replace(/\D/g, "").slice(-4); }
+    var costCols = cards.map(function (a) { return { key: tail4(a.code || a.name), label: a.name }; });
+    var cost = {}, costTotal = 0, colTotal = {};
+    COST.forEach(function (k) { cost[k[0]] = {}; });
     cc.forEach(function (c) {
       if (c.cr) return;
       for (var i = 0; i < COST.length; i++) {
-        if (COST[i][2].test(c.ds)) { cost[COST[i][0]] += c.amt; costTotal += c.amt; return; }
+        if (COST[i][2].test(c.ds)) {
+          var key = tail4(c.card);
+          if (!costCols.some(function (x) { return x.key === key; }))
+            costCols.push({ key: key, label: "Earlier card ··" + key });
+          cost[COST[i][0]][key] = (cost[COST[i][0]][key] || 0) + c.amt;
+          colTotal[key] = (colTotal[key] || 0) + c.amt;
+          costTotal += c.amt; return;
+        }
       }
     });
+    costCols = costCols.filter(function (x) { return colTotal[x.key] > 0.5; });
+    function rowSum(k) { var t = 0; for (var c in cost[k]) t += cost[k][c]; return t; }
     var first = cc[0].d, last = cc[cc.length - 1].d;
     var months = Math.max(1, Math.round((new Date(last) - new Date(first)) / (30.44 * 86400000)));
 
@@ -3260,9 +3276,20 @@ function renderAssets() {
           '<div class="ac-val-lbl">compared with paying by UPI or debit card</div></div>' +
       '</div>';
 
-    var costRows = COST.filter(function (k) { return cost[k[0]] > 0.5; }).map(function (k) {
-      return '<div class="ac-row"><span>' + k[1] + '</span><span>' + money(cost[k[0]]) + '</span></div>';
-    }).join("") + '<div class="ac-row cv-tot"><span>Total</span><span><b>' + money(costTotal) + '</b></span></div>';
+    function cellMoney(v) { return v > 0.5 ? money(v) : '<span class="muted">—</span>'; }
+    var costTable =
+      '<div class="tbl-scroll"><table class="cv-cost"><thead><tr><th>Charge</th>' +
+        costCols.map(function (x) { return '<th class="num">' + esc(x.label) + '</th>'; }).join("") +
+        (costCols.length > 1 ? '<th class="num">Total</th>' : '') + '</tr></thead><tbody>' +
+      COST.filter(function (k) { return rowSum(k[0]) > 0.5; }).map(function (k) {
+        return '<tr><td>' + k[1] + '</td>' +
+          costCols.map(function (x) { return '<td class="num">' + cellMoney(cost[k[0]][x.key] || 0) + '</td>'; }).join("") +
+          (costCols.length > 1 ? '<td class="num">' + money(rowSum(k[0])) + '</td>' : '') + '</tr>';
+      }).join("") +
+      '</tbody><tfoot><tr><td><b>Total</b></td>' +
+        costCols.map(function (x) { return '<td class="num"><b>' + money(colTotal[x.key]) + '</b></td>'; }).join("") +
+        (costCols.length > 1 ? '<td class="num"><b>' + money(costTotal) + '</b></td>' : '') +
+      '</tr></tfoot></table></div>';
 
     var rwRows = rw.map(function (a) {
       var r = a.rewards, coin = r.value >= 1;
@@ -3281,11 +3308,10 @@ function renderAssets() {
             rw.filter(function (a) { return a.rewards.value < 1; }).map(function (a) {
               return '₹' + a.rewards.value.toFixed(2) + ' each as cashback, up to ₹' + a.rewards.best.toFixed(2) + ' on SmartBuy flights and hotels';
             }).join("; ") + '. NeuCoins are ₹1 each.' + (asOf ? ' Totals to the ' + dayLabel(asOf) + ' ' + asOf.slice(0, 4) + ' statement.' : '') + '</div></div>' +
-        '<div class="acct-card cv-bad"><div class="ac-name">What the cards cost you</div>' +
-          '<div class="ac-rows">' + costRows + '</div>' +
-          '<div class="ac-sub" style="margin-top:9px">Every debit on the card statements since ' +
-            dayLabel(first) + ' ' + first.slice(0, 4) + ' that is a charge rather than a purchase.</div></div>' +
-      '</div>';
+      '</div>' +
+      '<h3 class="cv-h">What the cards cost you</h3>' +
+      '<p class="cap">Every debit on the card statements since ' + dayLabel(first) + ' ' + first.slice(0, 4) +
+        ' that is a charge rather than a purchase.</p>' + costTable;
 
     // Smart EMI: every loan on file, with what it has cost so far
     var loans = (DATA.emis || []).slice().sort(function (a, b) { return (a.booked || "") < (b.booked || "") ? -1 : 1; });
