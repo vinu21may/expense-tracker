@@ -1019,7 +1019,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v98";
+var APP_BUILD = "finances-shell-v99";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1933,7 +1933,7 @@ function chartNetLine(container, keys, map, fit, onPick) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: String(new Date().getFullYear()) /* current year on open (Vinod, 2 Nov 2026); "All years" is still in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "last12" /* opens on the last 12 months (Vinod, 2 Nov 2026), as Overview does; years and "All years" are in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: null, tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -5588,7 +5588,7 @@ function catMonthlyCard(allKeys) {
   var peak = keys.reduce(function (b, k) { return !b || (per[k] || 0) > (per[b] || 0) ? k : b; }, null);
   var change = prev.avg > 0 ? (now.avg - prev.avg) / prev.avg * 100 : null;
 
-  var shown = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; }).reverse();
+  var shown = keys.filter(function (k) { return mKeep(k, keys); }).reverse();
   var tot = 0, totN = 0;
   var body = shown.map(function (k) {
     var v = per[k] || 0, open = !!STATE.mcOpen[k];
@@ -5619,17 +5619,17 @@ function catMonthlyCard(allKeys) {
 
   return (STATE.mSix ? STATE.mSix.html : '') + tiles +
     '<div class="card"><h2>' + esc(name) + ' each month</h2><p class="cap">' +
-      (STATE.mYear || 'All years') + '. Tap a bar to open that month below.</p><div id="m-cat-chart"></div></div>' +
+      mLabel() + '. Tap a bar to open that month below.</p><div id="m-cat-chart"></div></div>' +
     '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
     '<p class="cap">Newest first, from the first month it appears. Share is of that month\'s ' + (isInc ? 'income' : 'spending') +
       '. Tap a month for the transactions.</p>' +
     (body
       ? '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">' + (isInc ? 'Received' : 'Spent') + '</th>' +
           '<th class="num">Transactions</th><th class="num">Share</th></tr></thead><tbody>' + body +
-          '<tr class="m-total"><td><b>' + (STATE.mYear ? STATE.mYear + ' total' : 'All months') + '</b></td>' +
+          '<tr class="m-total"><td><b>' + mTotalLabel() + '</b></td>' +
             '<td class="num"><b>' + money(tot) + '</b></td><td class="num"><b>' + totN + '</b></td><td></td></tr>' +
           '</tbody></table></div>'
-      : '<div class="empty">Nothing recorded' + (STATE.mYear ? ' in ' + STATE.mYear : '') + '.</div>') +
+      : '<div class="empty">Nothing recorded' + (STATE.mYear ? ' in ' + (STATE.mYear === 'last12' ? 'the last 12 months' : STATE.mYear) : '') + '.</div>') +
     '</div>';
 }
 
@@ -5671,8 +5671,8 @@ function renderMonthly() {
   var idx = monthsIndex(DATA.txns), keys = idx.keys, map = idx.map;
   var years = [];
   keys.forEach(function (k) { var y = k.slice(0, 4); if (years.indexOf(y) < 0) years.push(y); });
-  if (STATE.mYear && years.indexOf(STATE.mYear) < 0) STATE.mYear = "";
-  var shown = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; }).reverse();
+  if (STATE.mYear && STATE.mYear !== "last12" && years.indexOf(STATE.mYear) < 0) STATE.mYear = "";
+  var shown = keys.filter(function (k) { return mKeep(k, keys); }).reverse();
 
   var oo = oneOffByMonth(), OO = !!STATE.mOneOff, totOO = 0;
   var tot = blankAgg();
@@ -5693,7 +5693,8 @@ function renderMonthly() {
         (open ? monthDetail(k) : '') + '</td></tr>';
   }).join("");
 
-  var yearOpts = '<option value="">All years</option>' + years.slice().reverse().map(function (y) {
+  var yearOpts = '<option value="last12"' + (STATE.mYear === "last12" ? ' selected' : '') + '>Last 12 months</option>' +
+    '<option value=""' + (STATE.mYear ? '' : ' selected') + '>All years</option>' + years.slice().reverse().map(function (y) {
     return '<option value="' + y + '"' + (y === STATE.mYear ? ' selected' : '') + '>' + y + '</option>';
   }).join("");
 
@@ -5707,15 +5708,15 @@ function renderMonthly() {
   // the six-month comparison ends at the newest month -- of the chosen year, if one is
   STATE.mSix = null;
   if (STATE.mCat) {
-    var yk = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; });
+    var yk = keys.filter(function (k) { return mKeep(k, keys); });
     STATE.mSix = sixMonthCard(STATE.mCat, STATE.mSub, yk[yk.length - 1], keys, "m-six");
   }
   host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
-    '<div class="card"><h2>Income vs expenses</h2><p class="cap">' + (STATE.mYear || 'All years') +
+    '<div class="card"><h2>Income vs expenses</h2><p class="cap">' + mLabel() +
       (OO ? '. Everyday expenses only: one-off costs are set aside' : '. All expenses, one-off costs included') +
       '. Tap a month to open it below.</p>' +
       '<div id="m-ie"></div></div>' +
-    '<div class="card"><h2>Net saved over time</h2><p class="cap">' + (STATE.mYear || 'All years') +
+    '<div class="card"><h2>Net saved over time</h2><p class="cap">' + mLabel() +
       '. Income minus expenses and new money invested, with a three-month average to show the trend' +
       (OO ? '; one-off costs set aside' : '') + '. Tap a month to open it below.</p>' +
       '<div id="m-net"></div></div>' +
@@ -5728,7 +5729,7 @@ function renderMonthly() {
         (OO ? 'Everyday expenses' : 'Expenses') + '</th>' + (OO ? '<th class="num">One-off</th>' : '') +
         '<th class="num">Invested</th><th class="num">Net saved</th><th class="num">Savings rate</th></tr></thead>' +
       '<tbody>' + body +
-        '<tr class="m-total"><td><b>' + (STATE.mYear ? STATE.mYear + ' total' : 'All months') + '</b></td>' +
+        '<tr class="m-total"><td><b>' + mTotalLabel() + '</b></td>' +
           '<td class="num"><b>' + money(tot.income) + '</b></td><td class="num"><b>' + money(tot.expense) + '</b></td>' +
           (OO ? '<td class="num"><b>' + money(totOO) + '</b></td>' : '') +
           '<td class="num"><b>' + signed(tot.invest) + '</b></td><td class="num"><b>' + signed(net(tot)) + '</b></td>' +
@@ -5780,7 +5781,7 @@ function renderMonthly() {
     });
   }
   if (el("m-cat-chart")) {
-    var ck = keys.filter(function (k) { return !STATE.mYear || k.slice(0, 4) === STATE.mYear; });
+    var ck = keys.filter(function (k) { return mKeep(k, keys); });
     var cr = catRows(STATE.mCat, STATE.mSub), cv = {};
     cr.forEach(function (t) { var k = monthKey(t.d); cv[k] = (cv[k] || 0) + catAmt(t); });
     var firstK = Object.keys(cv).sort()[0];
@@ -5794,7 +5795,7 @@ function renderMonthly() {
   // a tapped month opens in the table below, as the chart under it does
   if (STATE.mSix) STATE.mSix.draw(function (k) {
     STATE.mcOpen[k] = true;
-    if (STATE.mYear && STATE.mYear !== k.slice(0, 4)) STATE.mYear = "";
+    if (!mKeep(k, keys)) STATE.mYear = "";
     renderMonthly();
     var r = host.querySelector('tr.tax-row[data-key="' + k + '"]');
     if (r) r.scrollIntoView({ block: "start" });
@@ -5810,10 +5811,21 @@ function renderMonthly() {
   if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });
 }
 
+/* The Monthly tab's Year picker: "last12" (the default), a year, or "" for all. */
+function mKeep(k, keys) {
+  if (!STATE.mYear) return true;
+  if (STATE.mYear === "last12") return keys.slice(-12).indexOf(k) >= 0;
+  return k.slice(0, 4) === STATE.mYear;
+}
+function mLabel() { return STATE.mYear === "last12" ? "Last 12 months" : (STATE.mYear || "All years"); }
+function mTotalLabel() {
+  return STATE.mYear === "last12" ? "Last 12 months total" : STATE.mYear ? STATE.mYear + " total" : "All months";
+}
+
 /* Overview tile -> Monthly tab, with that month open and scrolled to. */
 function openMonth(k) {
   STATE.mOpen[k] = true; STATE.mCat = ""; STATE.mSub = "";
-  if (STATE.mYear && STATE.mYear !== k.slice(0, 4)) STATE.mYear = "";
+  if (!mKeep(k, monthsIndex(DATA.txns).keys)) STATE.mYear = "";
   switchTab("monthly");
   var r = el("m-row-" + k);
   if (r) r.scrollIntoView({ block: "start" });
