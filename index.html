@@ -1020,7 +1020,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v101";
+var APP_BUILD = "finances-shell-v102";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1028,6 +1028,11 @@ var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFra
 /* A credit card's product name ("Regalia Gold", Account Details column U) where
    one is set, else its ledger label (HDFC.CC). Display only (Vinod, 2 Nov 2026). */
 function cardLabel(a) { return a.cardName || a.name; }
+/* The card a transaction was on ("Regalia Gold"), or "" for a bank-account row. */
+function cardNameOf(t) {
+  var a = (DATA.accounts || []).filter(function (x) { return x.name === t.ac; })[0];
+  return a && /credit/i.test(a.type || "") ? cardLabel(a) : "";
+}
 function accountLabel(name) {   // ledger account name -> card name where one is set
   var a = (DATA.accounts || []).filter(function (x) { return x.name === name; })[0];
   return a ? cardLabel(a) : name;
@@ -2375,7 +2380,8 @@ function renderOverview() {
             : "−" + money(t.db);
     return '<div class="r-row" data-ti="' + txnIndex(t) + '"><span class="r-ic ' + kind + '" aria-hidden="true">' + esc((t.c || "?").charAt(0)) + '</span>' +
       '<div class="r-txt"><div class="r-name">' + esc(name) + '</div>' +
-      '<div class="r-meta">' + dayLabel(t.d) + ' · ' + esc(t.c || "") + (t.t === "Savings" ? " · invested" : "") + '</div></div>' +
+      '<div class="r-meta">' + dayLabel(t.d) + ' · ' + esc(t.c || "") + (t.t === "Savings" ? " · invested" : "") +
+        (cardNameOf(t) ? ' · <span class="m-card">' + esc(cardNameOf(t)) + '</span>' : '') + '</div></div>' +
       '<span class="r-amt' + (kind === "inc" ? " inc" : "") + '">' + amt + '</span></div>';
   }
 
@@ -5453,8 +5459,7 @@ function catAmt(t) { return t.t === "Income" ? t.cr : t.db; }
    the bank's description in full underneath, amount on the right. */
 function txnLine(t, amt, tag) {
   // a card purchase says which card it was on (Vinod, 2 Nov 2026); bank rows stay as they were
-  var acc = (DATA.accounts || []).filter(function (x) { return x.name === t.ac; })[0];
-  var card = acc && /credit/i.test(acc.type || "") ? cardLabel(acc) : "";
+  var card = cardNameOf(t);
   return '<div class="kv m-line"><span><span class="muted">#' + t.row + '</span> ' + dayLabel(t.d) + ' · ' +
       (card ? '<span class="m-card">' + esc(card) + '</span> ' : '') +
       (t.n ? '<span class="m-note">' + esc(t.n) + '</span>' : '') + (tag ? ' <span class="muted">' + esc(tag) + '</span>' : '') +
