@@ -1019,11 +1019,19 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v96";
+var APP_BUILD = "finances-shell-v98";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/* A credit card's product name ("Regalia Gold", Account Details column U) where
+   one is set, else its ledger label (HDFC.CC). Display only (Vinod, 2 Nov 2026). */
+function cardLabel(a) { return a.cardName || a.name; }
+function cardLabelFor(card) {   // from a bare card number such as "7339" or "XX7339"
+  var k = String(card || "").replace(/\D/g, "").slice(-4);
+  var a = (DATA.accounts || []).filter(function (x) { return String(x.code || "").replace(/\D/g, "").slice(-4) === k; })[0];
+  return a ? cardLabel(a) : "Card " + card;
+}
 function money(n)      { return "₹" + inr0.format(Math.round(n || 0)); }
 function moneyExact(n) { return "₹" + inr2.format(n || 0); }
 
@@ -1925,7 +1933,7 @@ function chartNetLine(container, keys, map, fit, onPick) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "", mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: String(new Date().getFullYear()) /* current year on open (Vinod, 2 Nov 2026); "All years" is still in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: null, tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -2847,8 +2855,9 @@ function renderAssets() {
     var soon = a.dueDate && !overdue &&
                Math.round((new Date(a.dueDate) - new Date(today)) / 86400000) <= 5;
     return '<div class="acct-card">' +
-      '<div class="ac-name">' + esc(a.name) + '</div>' +
-      '<div class="ac-sub">' + esc(a.code || "") + (a.notes ? " · " + esc(a.notes) : "") +
+      '<div class="ac-name">' + esc(cardLabel(a)) + '</div>' +
+      // the ledger label (HDFC.CC) is what the Account filter on Transactions uses, so it stays visible
+      '<div class="ac-sub">' + (a.cardName ? esc(a.name) + " · " : "") + esc(a.code || "") + (a.notes ? " · " + esc(a.notes) : "") +
         '<br>' + cardTxnCount(a) + ' card txns on file</div>' +
       (stated
         ? '<div class="ac-val">' + money(a.due) + '</div><div class="ac-val-lbl">amount due</div>'
@@ -3185,7 +3194,7 @@ function renderAssets() {
     var monthly = emiMonthly[String(e.loanNo).replace(/^0+/, "")];
     var span = emiSpan(e);
     return '<tr>' +
-      '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">Card ' + esc(e.card) + " · " + esc(e.loanNo) + '</div></td>' +
+      '<td><b>' + esc(e.type) + '</b><div class="muted" style="font-size:12px">' + esc(cardLabelFor(e.card)) + " · " + esc(e.loanNo) + '</div></td>' +
       '<td>' + esc(span.start) + '</td>' +
       '<td>' + esc(span.end) + '</td>' +
       '<td class="num">' + money(e.amount) + '</td>' +
@@ -3226,7 +3235,7 @@ function renderAssets() {
     // number with no Account Details row (the pre-upgrade Regalia, ··0130) gets
     // its own column rather than being folded silently into another card.
     function tail4(v) { return String(v || "").replace(/\D/g, "").slice(-4); }
-    var costCols = cards.map(function (a) { return { key: tail4(a.code || a.name), label: a.name }; });
+    var costCols = cards.map(function (a) { return { key: tail4(a.code || a.name), label: cardLabel(a) }; });
     var cost = {}, costTotal = 0, colTotal = {};
     COST.forEach(function (k) { cost[k[0]] = {}; });
     cc.forEach(function (c) {
@@ -3292,9 +3301,9 @@ function renderAssets() {
 
     var rwRows = rw.map(function (a) {
       var r = a.rewards, coin = r.value >= 1;
-      return '<div class="ac-row"><span>' + esc(a.name) + ' earned</span><span>' + inr0.format(r.earned) + (coin ? ' coins' : ' pts') + '</span></div>' +
-        (r.reversed ? '<div class="ac-row"><span>' + esc(a.name) + ' taken back <span class="muted">(EMI and refunds)</span></span><span class="down">−' + inr0.format(r.reversed) + ' pts</span></div>' : '') +
-        '<div class="ac-row"><span>' + esc(a.name) + (coin ? ' coins still with the bank' : ' balance, unused') + '</span><span>' +
+      return '<div class="ac-row"><span>' + esc(cardLabel(a)) + ' earned</span><span>' + inr0.format(r.earned) + (coin ? ' coins' : ' pts') + '</span></div>' +
+        (r.reversed ? '<div class="ac-row"><span>' + esc(cardLabel(a)) + ' taken back <span class="muted">(EMI and refunds)</span></span><span class="down">−' + inr0.format(r.reversed) + ' pts</span></div>' : '') +
+        '<div class="ac-row"><span>' + esc(cardLabel(a)) + (coin ? ' coins still with the bank' : ' balance, unused') + '</span><span>' +
           inr0.format(r.balance) + (coin ? '' : ' <span class="muted">≈ ' + range(r.balance * r.value, r.balance * r.best) + '</span>') + '</span></div>';
     }).join("");
     var asOf = rw.length ? rw.map(function (a) { return a.rewards.asOf || ""; }).sort().pop() : "";
