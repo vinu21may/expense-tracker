@@ -493,6 +493,25 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
                     padding: 4px 0; cursor: pointer; }
 .card.flash { box-shadow: 0 0 0 2px var(--series-1), var(--shadow); transition: box-shadow .4s; }
 .up { color: var(--good-text); } .down { color: var(--critical); }
+/* "Is the credit card paying off?" on Bank & Cards (v93) */
+.cv-sum .ac-val { margin-top: 8px; }
+@media (min-width: 620px) { .cv-sum { grid-template-columns: repeat(3, 1fr); } }
+.acct-cards .acct-card.cv-good { --tint: #2dd4a0; }
+.acct-cards .acct-card.cv-bad  { --tint: #ff7a59; }
+.cv-two { margin-top: 12px; }
+@media (min-width: 1100px) { .cv-two { grid-template-columns: 1fr 1fr; } }
+.cv-tot { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
+.cv-h { font-size: 15px; margin: 22px 0 6px; }
+.cv-gain { border: 1px solid color-mix(in srgb, var(--good) 35%, var(--border)); border-radius: 14px; padding: 14px 16px;
+  background: color-mix(in srgb, var(--good) 9%, transparent); }
+.cv-gain .ac-val { font-size: clamp(21px, 2.6vw, 27px); font-weight: 700; letter-spacing: -0.025em; }
+.cv-gain .ac-val-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cv-gain p { margin: 10px 0 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.cv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cv-chips span { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); }
+.cv-chips b { color: var(--text-primary); font-weight: 600; }
+.cv-rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; }
+.cv-rules li { color: var(--text-secondary); } .cv-rules b { color: var(--text-primary); }
 
 /* Account numbers: 14 digits that get read off and compared against a bank
    document, so they need even digit widths and a little letter-spacing. */
@@ -999,7 +1018,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v83";
+var APP_BUILD = "finances-shell-v93";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3183,6 +3202,168 @@ function renderAssets() {
   var cardsDue = cards.filter(function (a) { return a.due !== null && a.due !== undefined; });
   var dueTotal = cardsDue.reduce(function (s, a) { return s + a.due; }, 0);
 
+  /* "Is the credit card paying off?" (Vinod, 2 Nov 2026). What the cards gave
+     back against what they cost, worked out from the card ledger every time, so
+     each new statement moves it without anyone retyping figures. Costs come from
+     CC_Transactions descriptions; reward points from the running totals in
+     Account Details (statements/update_card_rewards.py); the Smart EMI list from
+     CC_Loan_EMI; and the "what switching is worth" box from the bank ledger's
+     UPI and debit-card spending over the last 12 months. */
+  function cardValueHtml() {
+    var cc = DATA.cc || [];
+    if (!cc.length) return "";
+    var COST = [
+      ["fee",  "Annual fees",               /MEMBERSHIP FEE|ANNUAL FEE|JOINING FEE|RENEWAL FEE/i],
+      ["int",  "Smart EMI interest",        /OFFUS EMI,\s*INT/i],
+      ["proc", "Smart EMI processing fees", /PROCNG FEE|PROCESSING FEE/i],
+      ["fx",   "Foreign-currency markup",   /MARKUP|DCC/i],
+      ["chg",  "Interest and late charges", /FINANCE CHARGE|LATE PAY|OVERLIMIT|INTEREST CHARGE/i],
+      ["gst",  "GST on all of the above",   /^\s*(IGST|CGST|SGST)/i]
+    ];
+    var cost = {}, costTotal = 0;
+    COST.forEach(function (k) { cost[k[0]] = 0; });
+    cc.forEach(function (c) {
+      if (c.cr) return;
+      for (var i = 0; i < COST.length; i++) {
+        if (COST[i][2].test(c.ds)) { cost[COST[i][0]] += c.amt; costTotal += c.amt; return; }
+      }
+    });
+    var first = cc[0].d, last = cc[cc.length - 1].d;
+    var months = Math.max(1, Math.round((new Date(last) - new Date(first)) / (30.44 * 86400000)));
+
+    // reward points: net of what was taken back, at cashback value and at the best redemption
+    var rw = cards.filter(function (a) { return a.rewards; });
+    var backLo = 0, backHi = 0, bankLo = 0, bankHi = 0, revVal = 0;
+    rw.forEach(function (a) {
+      var r = a.rewards, net = r.earned - r.reversed;
+      backLo += net * r.value; backHi += net * r.best;
+      // a balance still with the bank is value not yet used; NeuCoins move to the
+      // Tata Neu app on their own, so only a points card has a real unused pile
+      if (r.value < 1) { bankLo += r.balance * r.value; bankHi += r.balance * r.best; }
+      revVal += r.reversed * r.value;
+    });
+    var net = (backLo + backHi) / 2 - costTotal;
+    function range(lo, hi) {
+      return Math.round(lo) === Math.round(hi) ? money(lo) : money(lo) + "–" + money(hi).replace("₹", "");
+    }
+
+    var summary =
+      '<div class="acct-cards cv-sum">' +
+        '<div class="acct-card cv-good"><div class="ac-name">Value you got back</div>' +
+          '<div class="ac-val up">' + (rw.length ? range(backLo, backHi) : '—') + '</div>' +
+          '<div class="ac-val-lbl">reward points and NeuCoins, after points taken back</div></div>' +
+        '<div class="acct-card cv-bad"><div class="ac-name">What the cards cost</div>' +
+          '<div class="ac-val down">' + money(costTotal) + '</div>' +
+          '<div class="ac-val-lbl">fees, EMI interest, markup and GST</div></div>' +
+        '<div class="acct-card ' + (net >= 0 ? "cv-good" : "cv-bad") + '"><div class="ac-name">Net, ' + months + ' months</div>' +
+          '<div class="ac-val ' + (net >= 0 ? "up" : "down") + '">' + (net >= 0 ? "+" : "−") + money(Math.abs(net)) + '</div>' +
+          '<div class="ac-val-lbl">compared with paying by UPI or debit card</div></div>' +
+      '</div>';
+
+    var costRows = COST.filter(function (k) { return cost[k[0]] > 0.5; }).map(function (k) {
+      return '<div class="ac-row"><span>' + k[1] + '</span><span>' + money(cost[k[0]]) + '</span></div>';
+    }).join("") + '<div class="ac-row cv-tot"><span>Total</span><span><b>' + money(costTotal) + '</b></span></div>';
+
+    var rwRows = rw.map(function (a) {
+      var r = a.rewards, coin = r.value >= 1;
+      return '<div class="ac-row"><span>' + esc(a.name) + ' earned</span><span>' + inr0.format(r.earned) + (coin ? ' coins' : ' pts') + '</span></div>' +
+        (r.reversed ? '<div class="ac-row"><span>' + esc(a.name) + ' taken back</span><span class="down">−' + inr0.format(r.reversed) + ' pts</span></div>' : '') +
+        '<div class="ac-row"><span>' + esc(a.name) + (coin ? ' coins still with the bank' : ' balance, unused') + '</span><span>' +
+          inr0.format(r.balance) + (coin ? '' : ' <span class="muted">≈ ' + range(r.balance * r.value, r.balance * r.best) + '</span>') + '</span></div>';
+    }).join("");
+    var asOf = rw.length ? rw.map(function (a) { return a.rewards.asOf || ""; }).sort().pop() : "";
+
+    var breakdown =
+      '<div class="acct-cards cv-two">' +
+        '<div class="acct-card cv-good"><div class="ac-name">What the cards gave you</div>' +
+          '<div class="ac-rows">' + (rwRows || '<div class="ac-row"><span>No reward totals recorded yet</span><span></span></div>') + '</div>' +
+          '<div class="ac-sub" style="margin-top:9px">Points are worth ' +
+            rw.filter(function (a) { return a.rewards.value < 1; }).map(function (a) {
+              return '₹' + a.rewards.value.toFixed(2) + ' each as cashback, up to ₹' + a.rewards.best.toFixed(2) + ' on SmartBuy flights and hotels';
+            }).join("; ") + '. NeuCoins are ₹1 each.' + (asOf ? ' Totals to the ' + dayLabel(asOf) + ' ' + asOf.slice(0, 4) + ' statement.' : '') + '</div></div>' +
+        '<div class="acct-card cv-bad"><div class="ac-name">What the cards cost you</div>' +
+          '<div class="ac-rows">' + costRows + '</div>' +
+          '<div class="ac-sub" style="margin-top:9px">Every debit on the card statements since ' +
+            dayLabel(first) + ' ' + first.slice(0, 4) + ' that is a charge rather than a purchase.</div></div>' +
+      '</div>';
+
+    // Smart EMI: every loan on file, with what it has cost so far
+    var loans = (DATA.emis || []).slice().sort(function (a, b) { return (a.booked || "") < (b.booked || "") ? -1 : 1; });
+    var emiCostTotal = 0;
+    var loanRows = loans.map(function (e) {
+      var no = String(e.loanNo).replace(/^0+/, "");
+      var paid = 0, fee = 0;
+      cc.forEach(function (c) {
+        if (c.cr) return;
+        var digits = c.ds.replace(/\s+/g, "");
+        if (/OFFUS EMI,\s*INT/i.test(c.ds) && digits.indexOf(no) >= 0) paid += c.amt;
+        var f = c.ds.match(/PROCNG FEE,\s*([\d\s]+)/i);
+        if (f) { var p = f[1].replace(/\s+/g, "").replace(/^0+/, ""); if (p && no.indexOf(p) === 0) fee += c.amt; }
+      });
+      emiCostTotal += paid + fee;
+      var open = e.balP > 0 || e.balI > 0;
+      return '<tr><td><b>' + esc(String(e.type || "").replace(/^Smart EMI\s*[—-]\s*/, "")) + '</b>' +
+          '<div class="muted" style="font-size:12px">' + (e.booked ? dayLabel(e.booked) + " " + e.booked.slice(0, 4) : "—") + '</div></td>' +
+        '<td class="num">' + money(e.amount) + '</td>' +
+        '<td>' + esc(String(e.rate)) + '<div class="muted" style="font-size:12px">' + esc(e.tenure) + '</div></td>' +
+        '<td class="num">' + money(paid) + '</td>' +
+        '<td class="num">' + (fee ? money(fee) : '<span class="muted">not billed yet</span>') + '</td>' +
+        '<td>' + (open ? '<span class="pill warn">' + esc(e.balT || "open") + ' left</span>' +
+                         '<div class="muted" style="font-size:12px">' + money(e.balI) + ' interest to come</div>'
+                       : '<span class="pill ok">closed</span>') + '</td></tr>';
+    }).join("");
+    var emiCard = loanRows
+      ? '<h3 class="cv-h">The purchases turned into Smart EMI</h3>' +
+        '<p class="cap">Paying these bills in full by the due date would have cost nothing in interest and kept the points. ' +
+          'So far: ' + money(emiCostTotal) + ' in interest and fees before GST' +
+          (revVal ? ', plus about ' + money(revVal) + ' of points taken back' : '') +
+          '. EMI chosen at the shop can carry interest too; only a true No-Cost EMI is free.</p>' +
+        '<div class="tbl-scroll"><table><thead><tr><th>Item</th><th class="num">Loan</th><th>Rate</th><th class="num">Interest paid</th><th class="num">Fee</th><th>Status</th></tr></thead><tbody>' +
+          loanRows + '</tbody></table></div>'
+      : "";
+
+    // what the bank-account UPI / debit-card spending of the last 12 months could earn on a card
+    var NOT_ON_CARD = /^(Housing & Home|Taxes & Fees|Uncategorized|Gifts & Donations|Loans & EMI|Investments|Insurance|Transfer|Education)$/;
+    var from = new Date(today); from.setFullYear(from.getFullYear() - 1);
+    var fromS = from.toISOString().slice(0, 10);
+    var mv = {}, mvTotal = 0, rentLike = 0;
+    DATA.txns.forEach(function (t) {
+      if (t.d < fromS || t.t !== "Expense" || t.x || !(t.db > 0) || /\.CC/i.test(t.ac)) return;
+      if (!/^(UPI|POS)\b|DEBIT CARD/i.test(t.ds)) return;
+      if (NOT_ON_CARD.test(t.c)) { if (t.c === "Housing & Home") rentLike += t.db; return; }
+      mv[t.c] = (mv[t.c] || 0) + t.db; mvTotal += t.db;
+    });
+    var top = Object.keys(mv).sort(function (a, b) { return mv[b] - mv[a]; }).slice(0, 7);
+    var gain =
+      '<h3 class="cv-h">What moving everyday spending to the card would be worth</h3>' +
+      '<div class="cv-gain">' +
+        '<div class="ac-val up">≈ ' + range(mvTotal * 0.01, mvTotal * 0.015) + ' a year</div>' +
+        '<div class="ac-val-lbl">on ' + money(mvTotal) + ' of UPI and debit-card spending from the bank in the last 12 months, at 1–1.5% back</div>' +
+        '<div class="cv-chips">' + top.map(function (c) {
+          return '<span>' + esc(c) + ' <b>' + moneyShort(mv[c]) + '</b></span>';
+        }).join("") + '</div>' +
+        '<p>The Tata Neu card links to UPI, so you keep scanning QR codes and earn about 1.5% back, and 5% on BigBasket ' +
+          'and other Tata brands. HDFC caps some categories (UPI, groceries, utilities), so the real figure will be somewhat lower. ' +
+          'At this level both annual fees are waived (about ₹3L a year on Tata Neu, ₹4L on Regalia Gold). ' +
+          (rentLike ? 'Left out: ' + money(rentLike) + ' of rent, maintenance and staff, where a card adds a fee, and taxes.' : '') + '</p>' +
+      '</div>';
+
+    var rules =
+      '<h3 class="cv-h">Three rules that make it work</h3>' +
+      '<ol class="cv-rules">' +
+        '<li><b>Always pay the full bill.</b> Paying only part, or late, charges about 40% a year and wipes out every benefit.</li>' +
+        '<li><b>Avoid Smart EMI unless it is a true No-Cost EMI.</b> Check the rate before saying yes, even at the shop.</li>' +
+        '<li><b>Redeem the points on SmartBuy flights or hotels</b>, which is worth more than cashback.</li>' +
+      '</ol>' +
+      '<p class="cap" style="margin:12px 0 0">Fee-waiver levels, earn rates and caps are HDFC\'s published terms, which changed on 15 May 2026. Check the current card terms before relying on exact figures.</p>';
+
+    return '<div class="card"><h2>Is the credit card paying off?</h2>' +
+      '<p class="cap">' + (net < 0
+        ? 'So far the cards have cost about ' + money(-net) + ' more than they gave back, mainly through Smart EMI and annual fees that were not waived.'
+        : 'So far the cards have given back about ' + money(net) + ' more than they cost.') + '</p>' +
+      summary + breakdown + emiCard + gain + rules + '</div>';
+  }
+
   el("tab-accounts").innerHTML =
     '<div class="card"><div class="total">' +
       '<div class="headline"><div class="lbl">Cash in bank accounts</div>' +
@@ -3228,7 +3409,9 @@ function renderAssets() {
       (emiHtml
         ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th>Started</th><th>Ends</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
         : '<div class="empty">No active EMI loans.</div>') +
-    '</div>';
+    '</div>' +
+
+    cardValueHtml();
 
   /* What each holding pays if cashed in today, and at maturity, with the
      taxable part of each. Worked out in the workbook's Exit Values sheet, which
