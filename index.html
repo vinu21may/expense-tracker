@@ -500,7 +500,7 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .acct-cards .acct-card.cv-bad  { --tint: #ff7a59; }
 .cv-two { margin-top: 12px; }
 @media (min-width: 620px) { .cv-two { grid-template-columns: 1fr; } }
-table.cv-cost tfoot td { border-top: 1px solid var(--border); }
+table.cv-cost tfoot td, table.cv-emi tfoot td { border-top: 1px solid var(--border); }
 .cv-tot { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
 .cv-h { font-size: 15px; margin: 22px 0 6px; }
 .cv-gain { border: 1px solid color-mix(in srgb, var(--good) 35%, var(--border)); border-radius: 14px; padding: 14px 16px;
@@ -1019,7 +1019,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v94";
+var APP_BUILD = "finances-shell-v95";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3249,14 +3249,13 @@ function renderAssets() {
 
     // reward points: net of what was taken back, at cashback value and at the best redemption
     var rw = cards.filter(function (a) { return a.rewards; });
-    var backLo = 0, backHi = 0, bankLo = 0, bankHi = 0, revVal = 0;
+    var backLo = 0, backHi = 0, bankLo = 0, bankHi = 0;
     rw.forEach(function (a) {
       var r = a.rewards, net = r.earned - r.reversed;
       backLo += net * r.value; backHi += net * r.best;
       // a balance still with the bank is value not yet used; NeuCoins move to the
       // Tata Neu app on their own, so only a points card has a real unused pile
       if (r.value < 1) { bankLo += r.balance * r.value; bankHi += r.balance * r.best; }
-      revVal += r.reversed * r.value;
     });
     var net = (backLo + backHi) / 2 - costTotal;
     function range(lo, hi) {
@@ -3294,7 +3293,7 @@ function renderAssets() {
     var rwRows = rw.map(function (a) {
       var r = a.rewards, coin = r.value >= 1;
       return '<div class="ac-row"><span>' + esc(a.name) + ' earned</span><span>' + inr0.format(r.earned) + (coin ? ' coins' : ' pts') + '</span></div>' +
-        (r.reversed ? '<div class="ac-row"><span>' + esc(a.name) + ' taken back</span><span class="down">−' + inr0.format(r.reversed) + ' pts</span></div>' : '') +
+        (r.reversed ? '<div class="ac-row"><span>' + esc(a.name) + ' taken back <span class="muted">(EMI and refunds)</span></span><span class="down">−' + inr0.format(r.reversed) + ' pts</span></div>' : '') +
         '<div class="ac-row"><span>' + esc(a.name) + (coin ? ' coins still with the bank' : ' balance, unused') + '</span><span>' +
           inr0.format(r.balance) + (coin ? '' : ' <span class="muted">≈ ' + range(r.balance * r.value, r.balance * r.best) + '</span>') + '</span></div>';
     }).join("");
@@ -3315,7 +3314,20 @@ function renderAssets() {
 
     // Smart EMI: every loan on file, with what it has cost so far
     var loans = (DATA.emis || []).slice().sort(function (a, b) { return (a.booked || "") < (b.booked || "") ? -1 : 1; });
-    var emiCostTotal = 0;
+    var emiCostTotal = 0, emiPaidT = 0, emiFeeT = 0, lostPts = 0, lostLo = 0, lostHi = 0;
+    /* Points lost per loan (Vinod, 2 Nov 2026). HDFC takes back the points a
+       purchase earned once it becomes a Smart EMI, but a statement shows only one
+       "Adjusted/Lapsed" figure for the month, so per loan it is worked out from the
+       card's earn rate -- Regalia Gold, 4 points per ₹150. Checked against the
+       statements: Sansui 1,688 here vs 1,688 reversed; ECOVACS + Bluestar 1,828 vs
+       1,852; Bose 1,268 vs 1,328; AirPods 780 vs 730; Philips 644 vs 605 -- 6,208
+       in all against 6,203 actually reversed for EMIs. The
+       remaining 1,312 reversed (Sep 2025) was the DesertCart refund, not an EMI. */
+    var PTS_PER_150 = 4;
+    function rewardsFor(card) {
+      var k = tail4(card);
+      return (cards.filter(function (a) { return tail4(a.code || a.name) === k; })[0] || {}).rewards;
+    }
     var loanRows = loans.map(function (e) {
       var no = String(e.loanNo).replace(/^0+/, "");
       var paid = 0, fee = 0;
@@ -3326,7 +3338,13 @@ function renderAssets() {
         var f = c.ds.match(/PROCNG FEE,\s*([\d\s]+)/i);
         if (f) { var p = f[1].replace(/\s+/g, "").replace(/^0+/, ""); if (p && no.indexOf(p) === 0) fee += c.amt; }
       });
-      emiCostTotal += paid + fee;
+      emiCostTotal += paid + fee; emiPaidT += paid; emiFeeT += fee;
+      var r = rewardsFor(e.card), pts = 0;
+      // only a points card loses points this way; NeuCoins are not reversed on EMI
+      if (r && r.value < 1) {
+        pts = Math.floor(e.amount / 150) * PTS_PER_150;
+        lostPts += pts; lostLo += pts * r.value; lostHi += pts * r.best;
+      }
       var open = e.balP > 0 || e.balI > 0;
       return '<tr><td><b>' + esc(String(e.type || "").replace(/^Smart EMI\s*[—-]\s*/, "")) + '</b>' +
           '<div class="muted" style="font-size:12px">' + (e.booked ? dayLabel(e.booked) + " " + e.booked.slice(0, 4) : "—") + '</div></td>' +
@@ -3334,6 +3352,9 @@ function renderAssets() {
         '<td>' + esc(String(e.rate)) + '<div class="muted" style="font-size:12px">' + esc(e.tenure) + '</div></td>' +
         '<td class="num">' + money(paid) + '</td>' +
         '<td class="num">' + (fee ? money(fee) : '<span class="muted">not billed yet</span>') + '</td>' +
+        '<td class="num">' + (pts ? '<span class="down">' + inr0.format(pts) + ' pts</span>' +
+          '<div class="muted" style="font-size:12px">≈ ' + range(pts * r.value, pts * r.best) + '</div>'
+          : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (open ? '<span class="pill warn">' + esc(e.balT || "open") + ' left</span>' +
                          '<div class="muted" style="font-size:12px">' + money(e.balI) + ' interest to come</div>'
                        : '<span class="pill ok">closed</span>') + '</td></tr>';
@@ -3342,10 +3363,16 @@ function renderAssets() {
       ? '<h3 class="cv-h">The purchases turned into Smart EMI</h3>' +
         '<p class="cap">Paying these bills in full by the due date would have cost nothing in interest and kept the points. ' +
           'So far: ' + money(emiCostTotal) + ' in interest and fees before GST' +
-          (revVal ? ', plus about ' + money(revVal) + ' of points taken back' : '') +
+          (lostPts ? ', plus about ' + inr0.format(lostPts) + ' reward points taken back, worth ' +
+            range(lostLo, lostHi) + ' (cashback value to SmartBuy value)' : '') +
           '. EMI chosen at the shop can carry interest too; only a true No-Cost EMI is free.</p>' +
-        '<div class="tbl-scroll"><table><thead><tr><th>Item</th><th class="num">Loan</th><th>Rate</th><th class="num">Interest paid</th><th class="num">Fee</th><th>Status</th></tr></thead><tbody>' +
-          loanRows + '</tbody></table></div>'
+        '<div class="tbl-scroll"><table class="cv-emi"><thead><tr><th>Item</th><th class="num">Loan</th><th>Rate</th><th class="num">Interest paid</th><th class="num">Fee</th><th class="num">Points lost</th><th>Status</th></tr></thead><tbody>' +
+          loanRows + '</tbody><tfoot><tr><td><b>Total</b></td><td></td><td></td>' +
+          '<td class="num"><b>' + money(emiPaidT) + '</b></td><td class="num"><b>' + money(emiFeeT) + '</b></td>' +
+          '<td class="num"><b class="down">' + inr0.format(lostPts) + ' pts</b>' +
+            '<div class="muted" style="font-size:12px">≈ ' + range(lostLo, lostHi) + '</div></td><td></td></tr></tfoot></table></div>' +
+        '<p class="cap" style="margin:8px 0 0">Points lost are worked out at 4 points per ₹150, the card\'s earn rate; ' +
+          'they match the reversals on the statements to within about 5%. GST of 18% on the interest and fees is extra.</p>'
       : "";
 
     // what the bank-account UPI / debit-card spending of the last 12 months could earn on a card
