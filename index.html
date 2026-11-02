@@ -501,7 +501,10 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .acct-cards .acct-card.cv-bad  { --tint: #ff7a59; }
 .cv-two { margin-top: 12px; }
 @media (min-width: 620px) { .cv-two { grid-template-columns: 1fr; } }
-table.cv-cost tfoot td, table.cv-emi tfoot td { border-top: 1px solid var(--border); }
+table.cv-cost tfoot td, table.cv-emi tfoot td, table.cv-cmp tfoot td { border-top: 1px solid var(--border); }
+table.cv-cmp td, table.cv-cmp th { vertical-align: top; }
+table.cv-cmp td.num { white-space: nowrap; font-size: 14px; }
+table.cv-cmp tfoot td.num b { font-size: 15px; }
 .cv-tot { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
 .cv-h { font-size: 15px; margin: 22px 0 6px; }
 .cv-gain { border: 1px solid color-mix(in srgb, var(--good) 35%, var(--border)); border-radius: 14px; padding: 14px 16px;
@@ -1020,7 +1023,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v102";
+var APP_BUILD = "finances-shell-v103";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3241,11 +3244,14 @@ function renderAssets() {
       ["gst",  "GST on all of the above",   /^\s*(IGST|CGST|SGST)/i]
     ];
     // one column per card (Vinod, 2 Nov 2026: "show in table format for both the
-    // cards"), matched on the last four digits like the EMI lookup above. A card
-    // number with no Account Details row (the pre-upgrade Regalia, ··0130) gets
-    // its own column rather than being folded silently into another card.
+    // cards"), matched on the last four digits like the EMI lookup above.
+    // Only ACTIVE cards are shown (Vinod, same day). Charges on a card number with
+    // no active Account Details row -- the pre-upgrade Regalia ··0130, closed Apr
+    // 2025 -- are left out of every figure and named in a note under the table.
     function tail4(v) { return String(v || "").replace(/\D/g, "").slice(-4); }
-    var costCols = cards.map(function (a) { return { key: tail4(a.code || a.name), label: cardLabel(a) }; });
+    var actCards = cards.filter(function (a) { return !a.status || /^active$/i.test(String(a.status).trim()); });
+    var otherCost = 0, otherCards = {};
+    var costCols = actCards.map(function (a) { return { key: tail4(a.code || a.name), label: cardLabel(a) }; });
     var cost = {}, costTotal = 0, colTotal = {};
     COST.forEach(function (k) { cost[k[0]] = {}; });
     cc.forEach(function (c) {
@@ -3253,8 +3259,9 @@ function renderAssets() {
       for (var i = 0; i < COST.length; i++) {
         if (COST[i][2].test(c.ds)) {
           var key = tail4(c.card);
-          if (!costCols.some(function (x) { return x.key === key; }))
-            costCols.push({ key: key, label: "Earlier card ··" + key });
+          if (!costCols.some(function (x) { return x.key === key; })) {
+            otherCost += c.amt; otherCards[key] = 1; return;
+          }
           cost[COST[i][0]][key] = (cost[COST[i][0]][key] || 0) + c.amt;
           colTotal[key] = (colTotal[key] || 0) + c.amt;
           costTotal += c.amt; return;
@@ -3267,7 +3274,7 @@ function renderAssets() {
     var months = Math.max(1, Math.round((new Date(last) - new Date(first)) / (30.44 * 86400000)));
 
     // reward points: net of what was taken back, at cashback value and at the best redemption
-    var rw = cards.filter(function (a) { return a.rewards; });
+    var rw = actCards.filter(function (a) { return a.rewards; });
     var backLo = 0, backHi = 0, bankLo = 0, bankHi = 0;
     rw.forEach(function (a) {
       var r = a.rewards, net = r.earned - r.reversed;
@@ -3281,18 +3288,36 @@ function renderAssets() {
       return Math.round(lo) === Math.round(hi) ? money(lo) : money(lo) + "–" + money(hi).replace("₹", "");
     }
 
+    /* Got back vs cost vs difference, per card, in one table (Vinod, 2 Nov 2026:
+       "in 1 table format for easy reference"). Got back is a range: points at
+       their cashback value up to their SmartBuy value; NeuCoins are ₹1 either way. */
+    var cmp = costCols.map(function (x) {
+      var a = actCards.filter(function (c) { return tail4(c.code || c.name) === x.key; })[0] || {};
+      var r = a.rewards, n = r ? r.earned - r.reversed : 0;
+      var lo = r ? n * r.value : 0, hi = r ? n * r.best : 0, ct = colTotal[x.key] || 0;
+      return { label: x.label, lo: lo, hi: hi, cost: ct, dLo: lo - ct, dHi: hi - ct, known: !!r };
+    });
+    var tot = cmp.reduce(function (t, c) {
+      t.lo += c.lo; t.hi += c.hi; t.cost += c.cost; t.dLo += c.dLo; t.dHi += c.dHi; return t;
+    }, { label: "Total", lo: 0, hi: 0, cost: 0, dLo: 0, dHi: 0, known: true });
+    if (cmp.length > 1) cmp.push(tot);
+    function signed(v) { return (v >= 0 ? "+" : "−") + money(Math.abs(v)); }
+    function diff(c) {
+      var lo = Math.min(c.dLo, c.dHi), hi = Math.max(c.dLo, c.dHi);
+      return Math.round(lo) === Math.round(hi) ? signed(lo) : signed(hi) + ' to ' + signed(lo).replace(/^([+−])₹/, "$1₹");
+    }
+    function head(c, i) { return '<th class="num' + (i === cmp.length - 1 && cmp.length > 2 ? ' cv-totcol' : '') + '">' + esc(c.label) + '</th>'; }
     var summary =
-      '<div class="acct-cards cv-sum">' +
-        '<div class="acct-card cv-good"><div class="ac-name">Value you got back</div>' +
-          '<div class="ac-val up">' + (rw.length ? range(backLo, backHi) : '—') + '</div>' +
-          '<div class="ac-val-lbl">reward points and NeuCoins, after points taken back</div></div>' +
-        '<div class="acct-card cv-bad"><div class="ac-name">What the cards cost</div>' +
-          '<div class="ac-val down">' + money(costTotal) + '</div>' +
-          '<div class="ac-val-lbl">fees, EMI interest, markup and GST</div></div>' +
-        '<div class="acct-card ' + (net >= 0 ? "cv-good" : "cv-bad") + '"><div class="ac-name">Net, ' + months + ' months</div>' +
-          '<div class="ac-val ' + (net >= 0 ? "up" : "down") + '">' + (net >= 0 ? "+" : "−") + money(Math.abs(net)) + '</div>' +
-          '<div class="ac-val-lbl">compared with paying by UPI or debit card</div></div>' +
-      '</div>';
+      '<div class="tbl-scroll"><table class="cv-cmp"><thead><tr><th>' + months + ' months</th>' + cmp.map(head).join("") + '</tr></thead><tbody>' +
+        '<tr><td>What you got back<div class="muted" style="font-size:12px">points and NeuCoins, after points taken back</div></td>' +
+          cmp.map(function (c) { return '<td class="num up">' + (c.known ? range(c.lo, c.hi) : '<span class="muted">—</span>') + '</td>'; }).join("") + '</tr>' +
+        '<tr><td>What the card cost<div class="muted" style="font-size:12px">fees, EMI interest, markup and GST</div></td>' +
+          cmp.map(function (c) { return '<td class="num down">' + money(c.cost) + '</td>'; }).join("") + '</tr>' +
+      '</tbody><tfoot><tr><td><b>Difference</b><div class="muted" style="font-size:12px">against paying by UPI or debit card</div></td>' +
+          cmp.map(function (c) { return '<td class="num"><b class="' + (c.dLo + c.dHi >= 0 ? "up" : "down") + '">' + diff(c) + '</b></td>'; }).join("") +
+      '</tr></tfoot></table></div>' +
+      (otherCost > 0.5 ? '<p class="cap" style="margin:8px 0 0">Active cards only. Left out: ' + money(otherCost) + ' of charges on ' +
+        Object.keys(otherCards).map(function (k) { return 'card ··' + k; }).join(", ") + ', which is no longer in use.</p>' : '');
 
     function cellMoney(v) { return v > 0.5 ? money(v) : '<span class="muted">—</span>'; }
     var costTable =
@@ -3332,7 +3357,7 @@ function renderAssets() {
     var PTS_PER_150 = 4;
     function rewardsFor(card) {
       var k = tail4(card);
-      return (cards.filter(function (a) { return tail4(a.code || a.name) === k; })[0] || {}).rewards;
+      return (actCards.filter(function (a) { return tail4(a.code || a.name) === k; })[0] || {}).rewards;
     }
     var loanRows = loans.map(function (e) {
       var no = String(e.loanNo).replace(/^0+/, "");
