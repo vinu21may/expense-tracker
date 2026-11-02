@@ -493,6 +493,7 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
                     padding: 4px 0; cursor: pointer; }
 .card.flash { box-shadow: 0 0 0 2px var(--series-1), var(--shadow); transition: box-shadow .4s; }
 .up { color: var(--good-text); } .down { color: var(--critical); }
+.m-card { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; }
 /* "Is the credit card paying off?" on Bank & Cards (v93) */
 .cv-sum .ac-val { margin-top: 8px; }
 @media (min-width: 620px) { .cv-sum { grid-template-columns: repeat(3, 1fr); } }
@@ -1019,7 +1020,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v100";
+var APP_BUILD = "finances-shell-v101";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5451,7 +5452,11 @@ function catAmt(t) { return t.t === "Income" ? t.cr : t.db; }
 /* One transaction in an opened month: row number, date, the note (if any) and
    the bank's description in full underneath, amount on the right. */
 function txnLine(t, amt, tag) {
+  // a card purchase says which card it was on (Vinod, 2 Nov 2026); bank rows stay as they were
+  var acc = (DATA.accounts || []).filter(function (x) { return x.name === t.ac; })[0];
+  var card = acc && /credit/i.test(acc.type || "") ? cardLabel(acc) : "";
   return '<div class="kv m-line"><span><span class="muted">#' + t.row + '</span> ' + dayLabel(t.d) + ' · ' +
+      (card ? '<span class="m-card">' + esc(card) + '</span> ' : '') +
       (t.n ? '<span class="m-note">' + esc(t.n) + '</span>' : '') + (tag ? ' <span class="muted">' + esc(tag) + '</span>' : '') +
       '<span class="m-desc">' + esc(t.ds) + '</span></span><b>' + money(amt) + '</b></div>';
 }
