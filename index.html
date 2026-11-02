@@ -6703,12 +6703,12 @@ el("g-token").addEventListener("keydown", function (e) { if (e.key === "Enter") 
   });
 })();
 
-/* Folding cards: every card that starts with a heading opens folded, so each
-   tab's summary fits on one screen; tapping the heading opens it. Cards
-   without a heading (the headline totals, the transaction list) stay open.
-   Opened cards are remembered until the app is closed, so a re-render after a
-   filter change doesn't snap them shut, and the next launch starts folded. */
-var CARD_OPEN = {};
+/* Folding cards: every card that starts with a heading can be folded from its
+   heading. Since v91 (2 Nov 2026) they all start OPEN (Vinod's call; v79-v90
+   started them folded). Cards folded by hand are remembered until the app is
+   closed, so a re-render after a filter change doesn't spring them open again,
+   and the next launch starts with everything open. */
+var CARD_SHUT = {};
 function cardKey(c, h) {
   var sec = c.closest("main > section");
   return (sec ? sec.id : "") + "|" + h.textContent.trim();
@@ -6717,7 +6717,7 @@ function setFold(c, open) {
   var h = c.firstElementChild;
   c.classList.toggle("fold", !open);
   h.setAttribute("aria-expanded", String(open));
-  if (open) CARD_OPEN[cardKey(c, h)] = true; else delete CARD_OPEN[cardKey(c, h)];
+  if (open) delete CARD_SHUT[cardKey(c, h)]; else CARD_SHUT[cardKey(c, h)] = true;
 }
 function foldCards() {
   document.querySelectorAll("main .card").forEach(function (c) {
@@ -6726,7 +6726,7 @@ function foldCards() {
     h.classList.add("fold-h");
     h.setAttribute("role", "button");
     h.tabIndex = 0;
-    setFold(c, !!CARD_OPEN[cardKey(c, h)]);
+    setFold(c, !CARD_SHUT[cardKey(c, h)]);
   });
 }
 function toggleFold(h) {
