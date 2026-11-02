@@ -515,16 +515,31 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .donut-wrap path.slice { cursor: pointer; transition: transform .2s var(--ease, ease), opacity .2s; }
 .donut-wrap path.slice.lump { cursor: default; }
 .donut-wrap svg:hover path.slice:not(:hover) { opacity: .55; }
+/* v87 glass ring: legend on the left, ring on the right (stacked on a phone, ring first) */
+.donut-wrap.ring .chartwrap { max-width: 400px; width: 100%; }
+@media (min-width: 700px) {
+  .donut-wrap.ring { grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); }
+  .donut-wrap.ring .donut-legend { order: -1; }
+}
+.donut-wrap.ring path.face { cursor: pointer; transition: opacity .2s; stroke-width: .7; stroke-linejoin: round; }
+.donut-wrap.ring path.rim { fill: none; stroke-width: 1; stroke-linecap: round; pointer-events: none; transition: opacity .2s; }
+.donut-wrap.ring svg.hov path.rim { opacity: .3; }
+.donut-wrap.ring path.face.lump { cursor: default; }
+.donut-wrap.ring svg.hov path.face:not(.on) { opacity: .4; }
 .donut-legend { display: grid; gap: 2px; min-width: 0; }
-.donut-legend button { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 50px; gap: 10px; align-items: center;
-  width: 100%; border: none; background: none; border-radius: 10px; padding: 8px 10px; min-height: 40px;
+.donut-legend .rl-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 10px 8px; }
+.donut-legend .rl-total { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.donut-legend .rl-sub { font-size: 12.5px; color: var(--muted); }
+.donut-legend button { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  width: 100%; border: none; background: none; border-radius: 12px; padding: 7px 10px; min-height: 44px;
   font-size: 13.5px; font-weight: 550; color: var(--text-secondary); text-align: left; }
 .donut-legend button:hover { background: var(--hover); color: var(--text-primary); }
 .donut-legend button:disabled { cursor: default; background: none; }
-.donut-legend button.on { background: color-mix(in srgb, var(--series-2) 14%, transparent); color: var(--text-primary); font-weight: 650; }
-.donut-legend .sw { width: 12px; height: 12px; border-radius: 4px; }
-.donut-legend .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.donut-legend .am { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text-primary); white-space: nowrap; }
+.donut-legend button.on { background: color-mix(in srgb, var(--series-2) 14%, transparent); color: var(--text-primary); }
+.donut-legend .sw { width: 9px; height: 9px; border-radius: 50%; }
+.donut-legend .tx { display: grid; min-width: 0; line-height: 1.25; }
+.donut-legend .nm { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend .am { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14.5px; color: var(--text-primary); white-space: nowrap; }
 .donut-legend .pc { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); text-align: right; }
 
 /* ------------------------------------------------- Overview: split view */
@@ -1408,50 +1423,118 @@ function chartIncomeExpense(container, keys, map, fit, opts) {
 var DONUT_COLOURS = ["var(--series-1)", "var(--accent-2)", "var(--series-3)", "var(--series-2)",
                      "var(--series-4)", "#38bdf8", "#f472b6"];
 
+/*
+ * v87 (2 Nov 2026): the donut is now a 3D glass ring, after a banking-app design
+ * Vinod picked. Same data and taps as before; each category is a glossy slice
+ * whose height also follows its amount, so the biggest stands tallest. Drawn as
+ * flat SVG faces in a tilted view, painted back to front: each slice is cut into
+ * chunks of at most 10° so a long slice that wraps round the front still sorts
+ * correctly. Every face of slice i carries data-i, so hovering any face lights
+ * the whole slice. The legend sits on the left like the design: dot, amount,
+ * name, share.
+ */
+var RING_COLOURS = ["#4f6bff", "#a26bff", "#2dd4a0", "#f5b83d", "#ff7a59", "#38bdf8", "#f472b6"];
+var RING_OTHER = "#94a3b8";
+
+function mixHex(a, b, t) {
+  var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16), out = "#";
+  [16, 8, 0].forEach(function (sh) {
+    var x = Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+    out += ("0" + x.toString(16)).slice(-2);
+  });
+  return out;
+}
+
 function chartDonut(container, rows, total, period, onPick, highlight) {
   if (!rows.length || !(total > 0)) { container.innerHTML = '<div class="empty">No spending recorded in this period.</div>'; return; }
-  var shown = rows.slice(0, DONUT_COLOURS.length), rest = rows.slice(DONUT_COLOURS.length);
-  shown = shown.map(function (r, i) { return { name: r.name, value: r.value, colour: DONUT_COLOURS[i] }; });
+  var shown = rows.slice(0, RING_COLOURS.length), rest = rows.slice(RING_COLOURS.length);
+  shown = shown.map(function (r, i) { return { name: r.name, value: r.value, colour: RING_COLOURS[i] }; });
   if (rest.length) shown.push({ name: "Other (" + rest.length + ")", value: rest.reduce(function (a, r) { return a + r.value; }, 0),
-                                colour: "var(--muted)", lump: true });
+                                colour: RING_OTHER, lump: true });
 
-  var C = 120, R = 112, r = 74, a = -Math.PI / 2, s = "";
-  function pt(rad, ang) { return (C + rad * Math.cos(ang)).toFixed(2) + " " + (C + rad * Math.sin(ang)).toFixed(2); }
-  function arc(a0, a1) {
-    if (a1 - a0 >= 2 * Math.PI - 1e-6) a1 = a0 + 2 * Math.PI - 1e-4;   // a lone slice still draws as a ring
-    var big = a1 - a0 > Math.PI ? 1 : 0;
-    return "M" + pt(R, a0) + " A" + R + " " + R + " 0 " + big + " 1 " + pt(R, a1) +
-           " L" + pt(r, a1) + " A" + r + " " + r + " 0 " + big + " 0 " + pt(r, a0) + " Z";
+  var W = 300, H = 210, CX = 150, CY = 134, R = 122, r = 64, K = 0.5, HMIN = 16, HMAX = 60;
+  var GAP = 0.012, CHUNK = Math.PI / 30, STEP = Math.PI / 60, id = "rg" + Math.random().toString(36).slice(2, 7);
+  var vmax = shown.reduce(function (m, s) { return Math.max(m, s.value); }, 0);
+  function P(rad, ang, z, dx, dy) {
+    return (CX + dx + rad * Math.cos(ang)).toFixed(1) + "," + (CY + dy + rad * Math.sin(ang) * K - z).toFixed(1);
   }
-  var legend = "";
-  shown.forEach(function (row) {
-    var frac = row.value / total, a1 = a + frac * 2 * Math.PI;
-    var pct = (frac * 100).toFixed(1);
-    var picked = highlight && row.name === highlight;
-    var mid = (a + a1) / 2, off = picked ? 7 : 0;
+  function arcPts(rad, a0, a1, z, dx, dy) {
+    var n = Math.max(1, Math.ceil(Math.abs(a1 - a0) / STEP)), pts = [];
+    for (var j = 0; j <= n; j++) pts.push(P(rad, a0 + (a1 - a0) * j / n, z, dx, dy));
+    return pts;
+  }
+
+  var defs = "", faces = [], legend = "", a = -Math.PI / 2;
+  shown.forEach(function (row, i) {
+    var c = row.colour, frac = row.value / total, a1 = a + frac * 2 * Math.PI;
+    var pct = (frac * 100).toFixed(1), picked = highlight && row.name === highlight;
+    var h = HMIN + (HMAX - HMIN) * Math.sqrt(row.value / vmax);
+    var g = frac < 0.999 && a1 - a > 4 * GAP ? GAP : 0, s0 = a + g, s1 = a1 - g, mid = (a + a1) / 2;
+    var dx = picked ? 10 * Math.cos(mid) : 0, dy = picked ? 10 * Math.sin(mid) * K : 0;
+    defs += '<linearGradient id="' + id + 't' + i + '" gradientUnits="userSpaceOnUse" x1="' + (CX - R) + '" y1="' + (CY - R * K - HMAX) +
+        '" x2="' + (CX + R) + '" y2="' + (CY + R * K - HMIN) + '">' +
+        '<stop offset="0" stop-color="' + mixHex(c, "#ffffff", .55) + '"/><stop offset=".55" stop-color="' + mixHex(c, "#ffffff", .12) + '"/>' +
+        '<stop offset="1" stop-color="' + c + '"/></linearGradient>';
+    // light from the front-left: walls facing it brighten, walls turning away darken
+    function shade(ang, base) {
+      var lit = Math.cos(ang - 2.4);
+      return lit > 0 ? mixHex(base, "#ffffff", .32 * lit) : mixHex(base, "#000000", .42 * -lit);
+    }
     var tip = '<div class="t-title">' + esc(row.name) + '</div>' +
       '<div class="t-row">Spent<b>' + money(row.value) + '</b></div>' +
       '<div class="t-row">Share<b>' + pct + '%</b></div>' +
       (row.lump ? '' : '<div class="t-row muted" style="font-size:12px">Tap for sub-categories</div>');
-    s += '<path class="slice' + (row.lump ? ' lump' : '') + '" d="' + arc(a, a1) + '" fill="' + row.colour + '"' +
-         ' stroke="var(--surface-1)" stroke-width="2" stroke-linejoin="round"' +
-         (off ? ' transform="translate(' + (off * Math.cos(mid)).toFixed(2) + ' ' + (off * Math.sin(mid)).toFixed(2) + ')"' : '') +
-         ' data-tip="' + esc(tip) + '"' + (row.lump ? '' : ' data-cat="' + esc(row.name) + '"') + '/>';
-    legend += '<button type="button"' + (picked ? ' class="on"' : '') + (row.lump ? ' disabled' : ' data-cat="' + esc(row.name) + '"') + '>' +
-      '<span class="sw" style="background:' + row.colour + '"></span><span class="nm">' + esc(row.name) + '</span>' +
-      '<span class="am">' + moneyShort(row.value) + '</span><span class="pc">' + pct + '%</span></button>';
+    var attrs = ' data-i="' + i + '" data-tip="' + esc(tip) + '"' + (row.lump ? '' : ' data-cat="' + esc(row.name) + '"');
+    var cls = "face" + (row.lump ? " lump" : "");
+    function face(pts, fill, depth, kind) {
+      // stroke in the fill colour closes the hairline seams between neighbouring faces
+      faces.push({ depth: depth, kind: kind, d: '<path class="' + cls + '" d="M' + pts.join(" L") + ' Z" fill="' + fill +
+        '" stroke="' + fill + '"' + attrs + '/>' });
+    }
+    var n = Math.max(1, Math.ceil((s1 - s0) / CHUNK));
+    for (var j = 0; j < n; j++) {
+      var c0 = s0 + (s1 - s0) * j / n, c1 = s0 + (s1 - s0) * (j + 1) / n, cm = (c0 + c1) / 2, dep = Math.sin(cm);
+      var back = dep < 0;
+      // within a chunk: the far wall, then the cut ends, then the near wall, then the top
+      var outer = arcPts(R, c0, c1, 0, dx, dy).concat(arcPts(R, c1, c0, h, dx, dy));
+      var inner = arcPts(r, c0, c1, 0, dx, dy).concat(arcPts(r, c1, c0, h, dx, dy));
+      var oFill = shade(cm, c), nFill = shade(cm + Math.PI, mixHex(c, "#000000", .25));
+      face(back ? outer : inner, back ? oFill : nFill, dep, 0);
+      if (j === 0)     face([P(r, c0, 0, dx, dy), P(R, c0, 0, dx, dy), P(R, c0, h, dx, dy), P(r, c0, h, dx, dy)], shade(c0 - Math.PI / 2, c), dep, 1);
+      if (j === n - 1) face([P(r, c1, 0, dx, dy), P(R, c1, 0, dx, dy), P(R, c1, h, dx, dy), P(r, c1, h, dx, dy)], shade(c1 + Math.PI / 2, c), dep, 1);
+      face(back ? inner : outer, back ? nFill : oFill, dep, 2);
+      face(arcPts(R, c0, c1, h, dx, dy).concat(arcPts(r, c1, c0, h, dx, dy)), "url(#" + id + "t" + i + ")", dep, 3);
+      // glass rim: a bright line along the top's outer edge, softer on the inner edge
+      faces.push({ depth: dep, kind: 4, d: '<path class="rim" d="M' + arcPts(R, c0, c1, h, dx, dy).join(" L") + '" stroke="rgba(255,255,255,.55)"/>' +
+        '<path class="rim" d="M' + arcPts(r, c0, c1, h, dx, dy).join(" L") + '" stroke="rgba(255,255,255,.25)"/>' });
+    }
+    legend += '<button type="button"' + (picked ? ' class="on"' : '') + ' data-i="' + i + '"' +
+      (row.lump ? ' disabled' : ' data-cat="' + esc(row.name) + '"') + '>' +
+      '<span class="sw" style="background:' + c + ';box-shadow:0 0 10px ' + c + '"></span>' +
+      '<span class="tx"><span class="am">' + money(row.value) + '</span><span class="nm">' + esc(row.name) + '</span></span>' +
+      '<span class="pc">' + pct + '%</span></button>';
     a = a1;
   });
-  s += '<text x="' + C + '" y="' + (C - 2) + '" text-anchor="middle" font-size="25" font-weight="700" fill="var(--text-primary)"' +
-       ' font-variant-numeric="tabular-nums" letter-spacing="-0.5">' + moneyShort(total) + '</text>' +
-       '<text x="' + C + '" y="' + (C + 20) + '" text-anchor="middle" font-size="12" fill="var(--muted)">spent · ' + esc(period) + '</text>';
+  faces.sort(function (x, y) { return x.depth - y.depth || 0; });
+  // stable within a chunk: Array.sort is stable, and each chunk's faces were pushed far-to-near
 
-  container.innerHTML = '<div class="donut-wrap"><div class="chartwrap"><svg class="chart" viewBox="0 0 240 240"' +
-    ' role="img" aria-label="Share of spending by category, ' + esc(period) + '">' + s + '</svg></div>' +
-    '<div class="donut-legend">' + legend + '</div></div>';
+  container.innerHTML = '<div class="donut-wrap ring"><div class="chartwrap"><svg class="chart" data-glass="1" viewBox="0 0 ' + W + ' ' + H + '"' +
+    ' role="img" aria-label="Share of spending by category, ' + esc(period) + '"><defs>' + defs + '</defs>' +
+    '<ellipse cx="' + CX + '" cy="' + (CY + 10) + '" rx="' + (R + 6) + '" ry="' + ((R + 6) * K) + '" fill="#000" opacity=".22" filter="blur(10px)" style="filter:blur(10px)"/>' +
+    faces.map(function (f) { return f.d; }).join("") + '</svg></div>' +
+    '<div class="donut-legend"><div class="rl-head"><span class="rl-total">' + money(total) + '</span>' +
+    '<span class="rl-sub">spent · ' + esc(period) + '</span></div>' + legend + '</div></div>';
 
-  var wrap = container.querySelector(".chartwrap");
-  attachTip(wrap, wrap.querySelector("svg"));
+  var wrap = container.querySelector(".chartwrap"), svg = wrap.querySelector("svg");
+  attachTip(wrap, svg);
+  function light(i) {
+    svg.classList.toggle("hov", i !== null);
+    svg.querySelectorAll(".face").forEach(function (f) { f.classList.toggle("on", f.getAttribute("data-i") === i); });
+  }
+  container.querySelectorAll("[data-i]").forEach(function (n) {
+    n.addEventListener("mouseenter", function () { light(n.getAttribute("data-i")); });
+    n.addEventListener("mouseleave", function () { light(null); });
+  });
   if (onPick) container.querySelectorAll("[data-cat]").forEach(function (n) {
     n.addEventListener("click", function () { onPick(n.getAttribute("data-cat")); });
   });
