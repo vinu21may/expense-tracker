@@ -411,6 +411,12 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 .tax-row { cursor: pointer; }
 .tax-row:hover td { background: var(--plane); }
 #tab-monthly tr.m-picked td { background: var(--plane); }
+table.top-exp td { vertical-align: top; }
+table.top-exp .te-cat-inline { display: none; }
+@media (max-width: 600px) {          /* phone: category moves under the name so Amount stays on screen */
+  table.top-exp .te-cat, table.top-exp .te-pct { display: none; }
+  table.top-exp .te-cat-inline { display: inline; }
+}
 #tab-monthly tr.m-picked td:first-child { box-shadow: inset 3px 0 0 var(--series-1); }
 .tax-row .chev { display: inline-block; width: 12px; color: var(--muted); }
 .tax-detail td { background: var(--plane); }
@@ -1025,7 +1031,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v107";
+var APP_BUILD = "finances-shell-v108";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5912,9 +5918,34 @@ function topExpCard(k) {
       (noRec && rec.length ? '. Left out: ' + money(recSum) + ' of monthly recurring payments (rent, EMIs, utilities, ' +
         'monthly subscriptions, pet food, cook)' : '') +
       '. Tap another month above to switch.</p>' + seg +
-    (top.length ? top.map(function (t) {
-      return txnLine(t, t.db, t.c + ' / ' + t.s);
-    }).join("") : '<div class="empty">No expenses this month.</div>');
+    (top.length
+      ? '<div class="tbl-scroll"><table class="top-exp"><thead><tr><th>Date</th><th>Expense</th><th class="te-cat">Category</th>' +
+          '<th class="num">Amount</th><th class="num te-pct">Of month</th></tr></thead><tbody>' +
+        top.map(function (t) {
+          var card = cardNameOf(t);
+          return '<tr><td style="white-space:nowrap">' + dayLabel(t.d) + '</td>' +
+            '<td><b>' + esc(topExpName(t)) + '</b>' + (card ? ' <span class="m-card">' + esc(card) + '</span>' : '') +
+              '<div class="muted" style="font-size:12px">#' + t.row +
+                '<span class="te-cat-inline"> · ' + esc(t.c) + ' / ' + esc(t.s) + '</span></div></td>' +
+            '<td class="te-cat">' + esc(t.c) + '<div class="muted" style="font-size:12px">' + esc(t.s) + '</div></td>' +
+            '<td class="num">' + money(t.db) + '</td>' +
+            '<td class="num te-pct">' + (all > 0 ? Math.round(t.db / all * 100) + '%' : '—') + '</td></tr>';
+        }).join("") +
+        '</tbody><tfoot><tr><td></td><td><b>Top ' + top.length + '</b></td><td class="te-cat"></td>' +
+          '<td class="num"><b>' + money(sum) + '</b></td>' +
+          '<td class="num te-pct"><b>' + (all > 0 ? Math.round(sum / all * 100) + '%' : '—') + '</b></td></tr></tfoot></table></div>'
+      : '<div class="empty">No expenses this month.</div>');
+}
+/* A short name for a ledger row: his note if there is one, else the payee the
+   bank line names (UPI / POS / NEFT), else the start of the description. */
+function topExpName(t) {
+  if (t.n) return t.n;
+  var d = t.ds || "", m;
+  if ((m = d.match(/^UPI-(?:AUTOPAY-)?([^-@*]+)/i))) d = m[1];
+  else if ((m = d.match(/^POS \S+ (.+)/i))) d = m[1];
+  else if ((m = d.match(/^(?:NEFT|RTGS|IMPS)[^-]*-[^-]+-([^-]+)/i))) d = m[1];
+  d = d.trim().toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+  return d.length > 40 ? d.slice(0, 39) + "…" : d;
 }
 
 /* The Monthly tab's Year picker: "last12" (the default), a year, or "" for all. */
