@@ -1031,7 +1031,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v109";
+var APP_BUILD = "finances-shell-v110";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1956,7 +1956,7 @@ function chartNetLine(container, keys, map, fit, onPick) {
    5. Views
    ===================================================================== */
 
-var STATE = { mTopNoRec: (function () { try { return localStorage.getItem("ft.mTopRec") === "out"; } catch (e) { return false; } })(), ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "last12" /* opens on the last 12 months (Vinod, 2 Nov 2026), as Overview does; years and "All years" are in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { mTopNoRec: (function () { try { return localStorage.getItem("ft.mTopRec") === "out"; } catch (e) { return false; } })(), ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "last12" /* opens on the last 12 months (Vinod, 2 Nov 2026), as Overview does; years and "All years" are in the picker */, mCat: "", mGrps: {}, mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: null, tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -5480,22 +5480,44 @@ function signed(n) { return n < 0 ? '−' + money(-n) : money(n); }
    Spending categories count debits, income categories credits -- the same
    amounts the Spending tab and the Overview tiles use. Months with nothing
    spent show ₹0 so a gap is visible, from the first month the item appears. */
-/* Spending types (Vinod, 4 Nov 2026): the Show picker can also pick one-off
-   costs, monthly recurring payments, or the everyday rest. Their mCat values
-   start with "@"; inside them the second picker chooses a CATEGORY, not a
-   sub-category. One-off wins over recurring (a big insurance renewal is one-off). */
+/* Spending types (Vinod, 4 Nov 2026): a "Spending type" picker of its own on the
+   Monthly tab -- one-off costs, monthly recurring payments, or the everyday rest --
+   that combines with the Show (category) picker. The view key passed around is
+   "@type" for a whole type (broken down by category) or "@type|Category" for one
+   category within it (broken down by sub-category); a plain category is itself.
+   One-off wins over recurring (a big insurance renewal is one-off). */
 var SPEND_GROUPS = { "@oneoff": "One-off costs", "@recurring": "Monthly recurring", "@everyday": "Everyday spending" };
-function isGroup(cat) { return !!SPEND_GROUPS[cat]; }
-function catName(cat) { return SPEND_GROUPS[cat] || cat; }
-function inGroup(cat, t) {
+var SPEND_SHORT = { "@oneoff": "One-off", "@recurring": "Recurring", "@everyday": "Everyday" };
+/* several types can be on at once (Vinod, 4 Nov 2026): they join with "+", e.g. "@oneoff+@recurring" */
+function grpOf(cat) { return cat && cat.charAt(0) === "@" ? cat.split("|")[0] : ""; }
+function grpCat(cat) { return grpOf(cat) ? (cat.split("|")[1] || "") : cat; }
+function isGroup(cat) { return !!grpOf(cat) && !grpCat(cat); }
+function catName(cat) {
+  var g = grpOf(cat), c = grpCat(cat);
+  if (!g) return cat;
+  var parts = g.split("+"), nm = parts.length === 1 ? SPEND_GROUPS[g] : parts.map(function (x) { return SPEND_SHORT[x]; }).join(" + ");
+  return c ? c + ' (' + nm.toLowerCase() + ')' : nm;
+}
+function inGroup(g, t) {
   if (!charted(t) || t.t !== "Expense" || !(t.db > 0)) return false;
   var oo = isOneOff(t), rec = !oo && isRecurring(t);
-  return cat === "@oneoff" ? oo : cat === "@recurring" ? rec : !oo && !rec;
+  return g.split("+").indexOf(oo ? "@oneoff" : rec ? "@recurring" : "@everyday") >= 0;
 }
-/* what a row is broken down by: sub-category inside a category, category inside a spending type */
+/* what a row is broken down by: sub-category inside a category, category inside a whole spending type */
 function partOf(cat, t) { return (isGroup(cat) ? t.c : t.s) || "Other"; }
+/* the Monthly tab's current view key */
+function mGrpKey() {
+  // none ticked, or all three, is simply all spending -- no filter
+  var on = Object.keys(SPEND_GROUPS).filter(function (g) { return STATE.mGrps[g]; });
+  return on.length && on.length < 3 ? on.join("+") : "";
+}
+function mView() { var g = mGrpKey(); return g ? g + (STATE.mCat ? "|" + STATE.mCat : "") : STATE.mCat; }
 function catRows(cat, sub) {
-  if (isGroup(cat)) return DATA.txns.filter(function (t) { return inGroup(cat, t) && (!sub || t.c === sub); });
+  var g = grpOf(cat);
+  if (g) {
+    var c = grpCat(cat);
+    return DATA.txns.filter(function (t) { return inGroup(g, t) && (!c || t.c === c) && (!sub || (c ? t.s : t.c) === sub); });
+  }
   // a category is spending if any of its rows is; a stray Income row under it is left out
   var typ = DATA.txns.some(function (t) { return t.c === cat && t.t === "Expense"; }) ? "Expense" : "Income";
   return DATA.txns.filter(function (t) {
@@ -5607,11 +5629,12 @@ function sixMonthCard(cat, sub, endK, keys, id) {
 }
 
 function catMonthDetail(k) {
-  var rows = catRows(STATE.mCat, STATE.mSub).filter(function (t) { return monthKey(t.d) === k && catAmt(t) > 0; })
+  var V = mView();
+  var rows = catRows(V, STATE.mSub).filter(function (t) { return monthKey(t.d) === k && catAmt(t) > 0; })
                                            .sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
   var bySub = {};
-  var G = isGroup(STATE.mCat);
-  rows.forEach(function (t) { var b = partOf(STATE.mCat, t); bySub[b] = (bySub[b] || 0) + catAmt(t); });
+  var G = isGroup(V);
+  rows.forEach(function (t) { var b = partOf(V, t); bySub[b] = (bySub[b] || 0) + catAmt(t); });
   var subs = Object.keys(bySub).sort(function (a, b) { return bySub[b] - bySub[a]; });
   var html = (!STATE.mSub && subs.length > 1
       ? '<div class="exit-box" style="margin:6px 0 12px"><div class="lbl">By ' + (G ? 'category' : 'sub-category') + '</div>' +
@@ -5624,12 +5647,12 @@ function catMonthDetail(k) {
           }).join("") + '</div>'
       : '<div class="empty">Nothing this month.</div>');
   return '<div class="m-detail">' + html +
-    (rows.length && !G ? '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">Open these on the Transactions tab ›</button></p>' : '') +
+    (rows.length && !grpOf(V) ? '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">Open these on the Transactions tab ›</button></p>' : '') +
     '</div>';
 }
 
 function catMonthlyCard(allKeys) {
-  var cat = STATE.mCat, sub = STATE.mSub, rows = catRows(cat, sub);
+  var cat = mView(), sub = STATE.mSub, rows = catRows(cat, sub);
   var isInc = rows.length && rows[0].t === "Income";
   var per = {}, cnt = {};
   rows.forEach(function (t) { var k = monthKey(t.d); per[k] = (per[k] || 0) + catAmt(t); if (catAmt(t) > 0) cnt[k] = (cnt[k] || 0) + 1; });
@@ -5712,26 +5735,28 @@ function catPickers() {
       var g = groups[typ]; (g[t.c] = g[t.c] || {})[t.s || ""] = 1;
     });
   });
-  if (STATE.mCat && !isGroup(STATE.mCat) && !groups.Expense[STATE.mCat] && !groups.Income[STATE.mCat]) { STATE.mCat = ""; STATE.mSub = ""; }
+  var G = mGrpKey(), inG = {};
+  if (G) catRows(G).forEach(function (t) { if (t.c) (inG[t.c] = inG[t.c] || {})[t.s || ""] = 1; });
+  if (STATE.mCat && !(G ? inG[STATE.mCat] : groups.Expense[STATE.mCat] || groups.Income[STATE.mCat])) { STATE.mCat = ""; STATE.mSub = ""; }
   function opts(g) {
     return Object.keys(g).sort().map(function (c) {
       return '<option value="' + esc(c) + '"' + (c === STATE.mCat ? ' selected' : '') + '>' + esc(c) + '</option>';
     }).join("");
   }
-  var html = '<div class="f"><label for="m-cat">Show</label><select id="m-cat">' +
-    '<option value="">Income vs expenses</option>' +
-    '<optgroup label="Spending type">' + Object.keys(SPEND_GROUPS).map(function (g) {
-      return '<option value="' + g + '"' + (g === STATE.mCat ? ' selected' : '') + '>' + SPEND_GROUPS[g] + '</option>';
-    }).join("") + '</optgroup>' +
-    '<optgroup label="Spending">' + opts(groups.Expense) + '</optgroup>' +
-    '<optgroup label="Income">' + opts(groups.Income) + '</optgroup></select></div>';
+  var html = '<div class="f"><label>Spending type</label><span class="seg" id="m-grp" role="group" aria-label="Spending type">' +
+    Object.keys(SPEND_GROUPS).map(function (g) {
+      return '<button type="button" data-grp="' + g + '" aria-pressed="' + !!STATE.mGrps[g] + '" title="' + SPEND_GROUPS[g] + '">' + SPEND_SHORT[g] + '</button>';
+    }).join("") + '</span></div>' +
+    '<div class="f"><label for="m-cat">Show</label><select id="m-cat">' +
+    (G ? '<option value="">All ' + esc(catName(G).toLowerCase()) + '</option>' + opts(inG)
+       : '<option value="">Income vs expenses</option>' +
+         '<optgroup label="Spending">' + opts(groups.Expense) + '</optgroup>' +
+         '<optgroup label="Income">' + opts(groups.Income) + '</optgroup>') + '</select></div>';
   if (STATE.mCat) {
-    var G = isGroup(STATE.mCat), seen = {};
-    if (G) catRows(STATE.mCat).forEach(function (t) { if (t.c) seen[t.c] = 1; });
-    var subs = Object.keys(G ? seen : (groups.Expense[STATE.mCat] || groups.Income[STATE.mCat])).filter(Boolean).sort();
+    var subs = Object.keys(G ? inG[STATE.mCat] : (groups.Expense[STATE.mCat] || groups.Income[STATE.mCat])).filter(Boolean).sort();
     if (STATE.mSub && subs.indexOf(STATE.mSub) < 0) STATE.mSub = "";
-    html += '<div class="f"><label for="m-sub">' + (G ? 'Category' : 'Sub-category') + '</label><select id="m-sub">' +
-      '<option value="">All ' + (G ? esc(catName(STATE.mCat).toLowerCase()) : 'of ' + esc(STATE.mCat)) + '</option>' +
+    html += '<div class="f"><label for="m-sub">Sub-category</label><select id="m-sub">' +
+      '<option value="">All of ' + esc(STATE.mCat) + '</option>' +
       subs.map(function (x) { return '<option value="' + esc(x) + '"' + (x === STATE.mSub ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") +
       '</select></div>';
   }
@@ -5771,18 +5796,18 @@ function renderMonthly() {
 
   var host = el("tab-monthly");
   var filters = '<div class="filters">' + catPickers() +
-      (STATE.mCat ? '' : '<div class="f"><label for="m-oneoff">One-off costs</label><select id="m-oneoff">' +
+      (mView() ? '' : '<div class="f"><label for="m-oneoff">One-off costs</label><select id="m-oneoff">' +
         '<option value=""' + (OO ? '' : ' selected') + '>Included</option>' +
         '<option value="1"' + (OO ? ' selected' : '') + '>Set aside</option></select></div>') +
       '<div class="f"><label for="m-year">Year</label><select id="m-year">' + yearOpts + '</select></div>' +
     '</div>';
   // the six-month comparison ends at the newest month -- of the chosen year, if one is
   STATE.mSix = null;
-  if (STATE.mCat) {
+  if (mView()) {
     var yk = keys.filter(function (k) { return mKeep(k, keys); });
-    STATE.mSix = sixMonthCard(STATE.mCat, STATE.mSub, yk[yk.length - 1], keys, "m-six");
+    STATE.mSix = sixMonthCard(mView(), STATE.mSub, yk[yk.length - 1], keys, "m-six");
   }
-  host.innerHTML = filters + (STATE.mCat ? catMonthlyCard(keys) :
+  host.innerHTML = filters + (mView() ? catMonthlyCard(keys) :
     '<div class="card"><h2>Income vs expenses</h2><p class="cap">' + mLabel() +
       (OO ? '. Everyday expenses only: one-off costs are set aside' : '. All expenses, one-off costs included') +
       '. Tap a month to open it below.</p>' +
@@ -5820,11 +5845,11 @@ function renderMonthly() {
   }
   host.querySelectorAll("tr.tax-row").forEach(function (tr) {
     function toggle() {
-      var k = tr.getAttribute("data-key"), seen = STATE.mCat ? STATE.mcOpen : STATE.mOpen, open = !seen[k];
-      if (!STATE.mCat) { STATE.mPick = k; drawTopExp(); }
+      var k = tr.getAttribute("data-key"), seen = mView() ? STATE.mcOpen : STATE.mOpen, open = !seen[k];
+      if (!mView()) { STATE.mPick = k; drawTopExp(); }
       seen[k] = open;
       var d = host.querySelector('tr.tax-detail[data-for="' + k + '"]');
-      if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = STATE.mCat ? catMonthDetail(k) : monthDetail(k); wireDetail(d); }
+      if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = mView() ? catMonthDetail(k) : monthDetail(k); wireDetail(d); }
       d.hidden = !open;
       tr.setAttribute("aria-expanded", open);
       tr.querySelector(".chev").textContent = open ? "▾" : "▸";
@@ -5873,11 +5898,11 @@ function renderMonthly() {
   }
   if (el("m-cat-chart")) {
     var ck = keys.filter(function (k) { return mKeep(k, keys); });
-    var cr = catRows(STATE.mCat, STATE.mSub), cv = {};
+    var cr = catRows(mView(), STATE.mSub), cv = {};
     cr.forEach(function (t) { var k = monthKey(t.d); cv[k] = (cv[k] || 0) + catAmt(t); });
     var firstK = Object.keys(cv).sort()[0];
     ck = ck.filter(function (k) { return firstK && k >= firstK; });
-    chartSubTrend(el("m-cat-chart"), ck, ck.map(function (k) { return cv[k] || 0; }), STATE.mSub || catName(STATE.mCat), function (k) {
+    chartSubTrend(el("m-cat-chart"), ck, ck.map(function (k) { return cv[k] || 0; }), STATE.mSub || catName(mView()), function (k) {
       STATE.mcOpen[k] = true; renderMonthly();
       var r = host.querySelector('tr.tax-row[data-key="' + k + '"]');
       if (r) r.scrollIntoView({ block: "start" });
@@ -5897,6 +5922,14 @@ function renderMonthly() {
     try { localStorage.setItem("ft.mOneOff", STATE.mOneOff ? "1" : ""); } catch (e) { /* private mode */ }
     // opened months rebuild with or without their one-off box
     renderMonthly();
+  });
+  host.querySelectorAll("#m-grp button[data-grp]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var g = b.getAttribute("data-grp");
+      STATE.mGrps[g] = !STATE.mGrps[g];
+      STATE.mSub = ""; STATE.mcOpen = {};   // the category stays if it is still in the chosen types
+      renderMonthly();
+    });
   });
   el("m-cat").addEventListener("change", function () { STATE.mCat = this.value; STATE.mSub = ""; STATE.mcOpen = {}; renderMonthly(); });
   if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });
@@ -5982,7 +6015,7 @@ function mTotalLabel() {
 
 /* Overview tile -> Monthly tab, with that month open and scrolled to. */
 function openMonth(k) {
-  STATE.mOpen[k] = true; STATE.mCat = ""; STATE.mSub = "";
+  STATE.mOpen[k] = true; STATE.mCat = ""; STATE.mGrps = {}; STATE.mSub = "";
   if (!mKeep(k, monthsIndex(DATA.txns).keys)) STATE.mYear = "";
   switchTab("monthly");
   var r = el("m-row-" + k);
