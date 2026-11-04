@@ -1107,9 +1107,11 @@ function cacheLoad() {
 /* =====================================================================
    3. Aggregation — every dashboard number is derived here
    -----------------------------------------------------------------
-   Matches the workbook's own definitions:
-     Net Savings = Income - Expenses - Investments
-     Savings Rate = Net Savings / Income
+   Net saved = Income - Expenses; Savings rate = Net saved / Income.
+   Invested is shown beside it as where savings went, not subtracted
+   (Vinod, 4 Nov 2026): moving earlier months' savings into an FD made
+   October 2026 read -10 lakh. The workbook's own dashboard still uses
+   Income - Expenses - Investments.
    Rows flagged "exclude from charts" are dropped from every total but
    remain visible in the transactions ledger.
    ===================================================================== */
@@ -1131,7 +1133,7 @@ function addTo(a, t) {
   a.count++;
   return a;
 }
-function net(a)  { return a.income - a.expense - a.invest; }
+function net(a)  { return a.income - a.expense; }
 function rate(a) { return a.income > 0 ? net(a) / a.income : 0; }
 
 function monthsIndex(txns) {
@@ -2463,15 +2465,15 @@ function renderOverview() {
       '<div class="card"><h2>Where ' + monthLabel(STATE.month) + ' went</h2>' +
         '<p class="cap">' + money(catTotal) + ' across ' + cats.length + ' categories. Tap a bar to open it.</p>' +
         '<div id="c-cat"></div></div>' +
-      '<div class="card"><h2>Net saved each month</h2><p class="cap">Income minus expenses and new money invested. An FD that matures and is reinvested counts only its interest.</p>' +
+      '<div class="card"><h2>Net saved each month</h2><p class="cap">Income minus expenses. Money moved into investments is shown separately and not taken off.</p>' +
         '<div id="c-net"></div>' +
         '<div style="margin-top:18px;border-top:1px solid var(--grid);padding-top:14px">' +
           '<div style="font-size:13px;font-weight:600;margin-bottom:8px">' + yr + ' year to date</div>' +
           '<table><tbody>' +
             '<tr><td>Income</td><td class="num">' + money(ytd.income) + '</td></tr>' +
             '<tr><td>Expenses</td><td class="num">' + money(ytd.expense) + '</td></tr>' +
-            '<tr><td>Invested</td><td class="num">' + money(ytd.invest) + '</td></tr>' +
             '<tr><td><b>Net saved</b></td><td class="num"><b>' + money(net(ytd)) + '</b></td></tr>' +
+            '<tr><td>Invested</td><td class="num">' + money(ytd.invest) + '</td></tr>' +
           '</tbody></table>' +
         '</div>' +
       '</div>' +
@@ -5397,16 +5399,16 @@ function monthDetail(k) {
     (expR.length ? expR.map(function (r) {
       var pct = a.expense > 0 ? Math.round(r[1] / a.expense * 100) : 0;
       return '<div class="kv"><span>' + esc(r[0]) + ' <span class="muted">' + pct + '%</span></span><b>' + money(r[1]) + '</b></div>';
-    }).join("") : kvText('No expenses this month', '', 'note')) + '</div>';
+    }).join("") : kvText('No expenses this month', '', 'note')) +
+    '<div class="kv total"><span>Net saved</span><b>' + signed(net(a)) + '</b></div>' +
+    kvText('Savings rate', (rate(a) * 100).toFixed(1) + '%') + '</div>';
 
   var invLines = fdRenewals(inv);
   var invBox = '<div class="exit-box"><div class="lbl">Invested</div><div class="v">' + signed(a.invest) + '</div>' +
     (invLines.length ? invLines.map(function (l) { return kv(l[0], l[1]); }).join("") +
       (invLines.some(function (l) { return l[1] < 0; })
         ? kvText('A minus is money taken back out of savings', '', 'note') : '')
-                : kvText('Nothing newly invested', '', 'note')) +
-    '<div class="kv total"><span>Net saved</span><b>' + signed(net(a)) + '</b></div>' +
-    kvText('Savings rate', (rate(a) * 100).toFixed(1) + '%') + '</div>';
+                : kvText('Nothing newly invested', '', 'note')) + '</div>';
 
   var bigBox = big.length
     ? '<div class="exit-box" style="margin-top:12px"><div class="lbl">Biggest expenses</div>' +
@@ -5725,8 +5727,8 @@ function renderMonthly() {
         '<td class="num">' + money(a.income) + '</td>' +
         '<td class="num">' + money(a.expense) + '</td>' +
         (OO ? '<td class="num">' + (oo[k] ? money(oo[k].sum) : '<span class="muted">—</span>') + '</td>' : '') +
-        '<td class="num">' + signed(a.invest) + '</td>' +
         '<td class="num"><b class="' + (ns < 0 ? 'neg' : '') + '">' + signed(ns) + '</b></td>' +
+        '<td class="num">' + signed(a.invest) + '</td>' +
         '<td class="num">' + (a.income > 0 ? (rate(a) * 100).toFixed(1) + '%' : '—') + '</td>' +
       '</tr>' +
       '<tr class="tax-detail"' + (open ? '' : ' hidden') + ' data-for="' + k + '"><td colspan="' + (OO ? 7 : 6) + '">' +
@@ -5757,22 +5759,22 @@ function renderMonthly() {
       '. Tap a month to open it below.</p>' +
       '<div id="m-ie"></div></div>' +
     '<div class="card"><h2>Net saved over time</h2><p class="cap">' + mLabel() +
-      '. Income minus expenses and new money invested, with a three-month average to show the trend' +
+      '. Income minus expenses, with a three-month average to show the trend' +
       (OO ? '; one-off costs set aside' : '') + '. Tap a month to open it below.</p>' +
       '<div id="m-net"></div></div>' +
     '<div class="card"><h2>Month by month</h2>' +
-      '<p class="cap">Newest first. Net saved is income minus expenses minus new money invested. Tap a month for its detail.' +
+      '<p class="cap">Newest first. Net saved is income minus expenses. Invested is how much of it, or of earlier savings, went into investments; it is not taken off. Tap a month for its detail.' +
         (OO ? ' <b>One-off costs are set aside</b>: Expenses and Net saved leave out moving costs, insurance premiums of ' +
           money(ONE_OFF_INSURANCE_MIN) + ' or more, and any other single expense of ' + money(ONE_OFF_MIN) +
           ' or more (rent and home-loan EMIs excepted). Open a month to see what was set aside.' : '') + '</p>' +
       '<div class="tbl-scroll"><table><thead><tr><th>Month</th><th class="num">Income</th><th class="num">' +
         (OO ? 'Everyday expenses' : 'Expenses') + '</th>' + (OO ? '<th class="num">One-off</th>' : '') +
-        '<th class="num">Invested</th><th class="num">Net saved</th><th class="num">Savings rate</th></tr></thead>' +
+        '<th class="num">Net saved</th><th class="num">Invested</th><th class="num">Savings rate</th></tr></thead>' +
       '<tbody>' + body +
         '<tr class="m-total"><td><b>' + mTotalLabel() + '</b></td>' +
           '<td class="num"><b>' + money(tot.income) + '</b></td><td class="num"><b>' + money(tot.expense) + '</b></td>' +
           (OO ? '<td class="num"><b>' + money(totOO) + '</b></td>' : '') +
-          '<td class="num"><b>' + signed(tot.invest) + '</b></td><td class="num"><b>' + signed(net(tot)) + '</b></td>' +
+          '<td class="num"><b>' + signed(net(tot)) + '</b></td><td class="num"><b>' + signed(tot.invest) + '</b></td>' +
           '<td class="num"><b>' + (tot.income > 0 ? (rate(tot) * 100).toFixed(1) + '%' : '—') + '</b></td></tr>' +
       '</tbody></table></div></div>');
 
