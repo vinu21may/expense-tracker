@@ -410,6 +410,8 @@ body:not(.selecting) .card.fold > p.cap { margin: 4px 0 0; white-space: nowrap; 
 /* ---------------------------------------------- exit values (Assets tab) */
 .tax-row { cursor: pointer; }
 .tax-row:hover td { background: var(--plane); }
+#tab-monthly tr.m-picked td { background: var(--plane); }
+#tab-monthly tr.m-picked td:first-child { box-shadow: inset 3px 0 0 var(--series-1); }
 .tax-row .chev { display: inline-block; width: 12px; color: var(--muted); }
 .tax-detail td { background: var(--plane); }
 #tab-monthly tr.tax-row { scroll-margin-top: 110px; }
@@ -1023,7 +1025,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v105";
+var APP_BUILD = "finances-shell-v106";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5776,7 +5778,8 @@ function renderMonthly() {
           (OO ? '<td class="num"><b>' + money(totOO) + '</b></td>' : '') +
           '<td class="num"><b>' + signed(net(tot)) + '</b></td><td class="num"><b>' + signed(tot.invest) + '</b></td>' +
           '<td class="num"><b>' + (tot.income > 0 ? (rate(tot) * 100).toFixed(1) + '%' : '—') + '</b></td></tr>' +
-      '</tbody></table></div></div>');
+      '</tbody></table></div></div>' +
+    '<div class="card" id="m-top"></div>');
 
   function wireDetail(scope) {
     scope.querySelectorAll(".m-txns").forEach(function (b) {
@@ -5791,6 +5794,7 @@ function renderMonthly() {
   host.querySelectorAll("tr.tax-row").forEach(function (tr) {
     function toggle() {
       var k = tr.getAttribute("data-key"), seen = STATE.mCat ? STATE.mcOpen : STATE.mOpen, open = !seen[k];
+      if (!STATE.mCat) { STATE.mPick = k; drawTopExp(); }
       seen[k] = open;
       var d = host.querySelector('tr.tax-detail[data-for="' + k + '"]');
       if (open && !d.firstChild.innerHTML) { d.firstChild.innerHTML = STATE.mCat ? catMonthDetail(k) : monthDetail(k); wireDetail(d); }
@@ -5802,13 +5806,23 @@ function renderMonthly() {
     tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   });
   wireDetail(host);
+  function drawTopExp() {
+    var box = el("m-top");
+    if (!box) return;
+    if (shown.indexOf(STATE.mPick) < 0) STATE.mPick = shown[0];
+    box.innerHTML = topExpCard(STATE.mPick);
+    host.querySelectorAll("tr.tax-row").forEach(function (r) {
+      r.classList.toggle("m-picked", r.getAttribute("data-key") === STATE.mPick);
+    });
+  }
+  drawTopExp();
   if (el("m-ie")) {
     var ik = shown.slice().reverse(), im = {};
     ik.forEach(function (k) { im[k] = shownAgg(k, map[k], oo); });
     // Set aside: the bars carry everyday spending only, so the chart visibly
     // drops the one-offs and rescales (Vinod: "the graph should change")
     chartNetLine(el("m-net"), ik, im, STATE.fitScale, function (k) {
-      STATE.mOpen[k] = true; renderMonthly();
+      STATE.mOpen[k] = true; STATE.mPick = k; renderMonthly();
       var r = el("m-row-" + k);
       if (r) r.scrollIntoView({ block: "start" });
     });
@@ -5816,7 +5830,7 @@ function renderMonthly() {
       everyday: OO,
       rerender: renderMonthly,
       onPick: function (k) {
-        STATE.mOpen[k] = true; renderMonthly();
+        STATE.mOpen[k] = true; STATE.mPick = k; renderMonthly();
         var r = el("m-row-" + k);
         if (r) r.scrollIntoView({ block: "start" });
       }
@@ -5851,6 +5865,29 @@ function renderMonthly() {
   });
   el("m-cat").addEventListener("change", function () { STATE.mCat = this.value; STATE.mSub = ""; STATE.mcOpen = {}; renderMonthly(); });
   if (el("m-sub")) el("m-sub").addEventListener("change", function () { STATE.mSub = this.value; STATE.mcOpen = {}; renderMonthly(); });
+}
+
+/* Top expenses (Vinod, 4 Nov 2026): a card under Month by month listing the
+   seven biggest expenses of whichever month was tapped last -- in the table or
+   either chart -- so the month can be read without opening its row. Opens on
+   the newest month shown. Every charted expense counts, recurring ones and
+   one-offs alike. */
+var TOP_EXP_N = 7;
+function topExpCard(k) {
+  if (!k) return '<h2>Top expenses</h2><div class="empty">No months to show.</div>';
+  var rows = DATA.txns.filter(function (t) {
+    return charted(t) && t.t === "Expense" && t.db > 0 && monthKey(t.d) === k;
+  }).sort(function (a, b) { return b.db - a.db; });
+  var all = rows.reduce(function (s, t) { return s + t.db; }, 0);
+  var top = rows.slice(0, TOP_EXP_N);
+  var sum = top.reduce(function (s, t) { return s + t.db; }, 0);
+  return '<h2>Top expenses · ' + monthLabel(k) + '</h2>' +
+    '<p class="cap">The ' + top.length + ' biggest of ' + rows.length + ' expenses in ' + monthLabel(k) +
+      (all > 0 ? ': ' + money(sum) + ', ' + Math.round(sum / all * 100) + '% of the month\'s ' + money(all) : '') +
+      '. Tap another month above to switch.</p>' +
+    (top.length ? top.map(function (t) {
+      return txnLine(t, t.db, t.c + ' / ' + t.s);
+    }).join("") : '<div class="empty">No expenses this month.</div>');
 }
 
 /* The Monthly tab's Year picker: "last12" (the default), a year, or "" for all. */
