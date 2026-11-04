@@ -1031,7 +1031,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v108";
+var APP_BUILD = "finances-shell-v109";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5480,7 +5480,22 @@ function signed(n) { return n < 0 ? '−' + money(-n) : money(n); }
    Spending categories count debits, income categories credits -- the same
    amounts the Spending tab and the Overview tiles use. Months with nothing
    spent show ₹0 so a gap is visible, from the first month the item appears. */
+/* Spending types (Vinod, 4 Nov 2026): the Show picker can also pick one-off
+   costs, monthly recurring payments, or the everyday rest. Their mCat values
+   start with "@"; inside them the second picker chooses a CATEGORY, not a
+   sub-category. One-off wins over recurring (a big insurance renewal is one-off). */
+var SPEND_GROUPS = { "@oneoff": "One-off costs", "@recurring": "Monthly recurring", "@everyday": "Everyday spending" };
+function isGroup(cat) { return !!SPEND_GROUPS[cat]; }
+function catName(cat) { return SPEND_GROUPS[cat] || cat; }
+function inGroup(cat, t) {
+  if (!charted(t) || t.t !== "Expense" || !(t.db > 0)) return false;
+  var oo = isOneOff(t), rec = !oo && isRecurring(t);
+  return cat === "@oneoff" ? oo : cat === "@recurring" ? rec : !oo && !rec;
+}
+/* what a row is broken down by: sub-category inside a category, category inside a spending type */
+function partOf(cat, t) { return (isGroup(cat) ? t.c : t.s) || "Other"; }
 function catRows(cat, sub) {
+  if (isGroup(cat)) return DATA.txns.filter(function (t) { return inGroup(cat, t) && (!sub || t.c === sub); });
   // a category is spending if any of its rows is; a stray Income row under it is left out
   var typ = DATA.txns.some(function (t) { return t.c === cat && t.t === "Expense"; }) ? "Expense" : "Income";
   return DATA.txns.filter(function (t) {
@@ -5523,7 +5538,7 @@ function sixMonthCard(cat, sub, endK, keys, id) {
     if (!stats[k]) stats[k] = { n: 0, big: null };
     stats[k].n++;
     if (!stats[k].big || v > catAmt(stats[k].big)) stats[k].big = t;
-    var sb = t.s || "Other";
+    var sb = partOf(cat, t);
     if (!bySub[sb]) bySub[sb] = {};
     bySub[sb][k] = (bySub[sb][k] || 0) + v;
   });
@@ -5535,7 +5550,7 @@ function sixMonthCard(cat, sub, endK, keys, id) {
   var verb = isInc ? "received" : "spent";
   function cell(v) { return v ? money(v) : '<span class="muted">—</span>'; }
 
-  var head = '<tr><th>' + (sub ? '' : 'Sub-category') + '</th>' + sixKeys.map(function (k) {
+  var head = '<tr><th>' + (sub ? '' : isGroup(cat) ? 'Category' : 'Sub-category') + '</th>' + sixKeys.map(function (k) {
     return '<th class="num">' + monthShort(k) + (k === curK && underway ? '<br><span class="muted" style="font-weight:400">so far</span>' : '') + '</th>';
   }).join("") + '</tr>';
   var rows;
@@ -5582,7 +5597,7 @@ function sixMonthCard(cat, sub, endK, keys, id) {
       ' the ' + money(avg) + ' average of the ' + before.length + ' months before') + '.';
 
   return {
-    html: '<div class="card" id="' + id + '"><h2>' + esc(cat) + (sub ? ' › ' + esc(sub) : '') + ', last ' + sixKeys.length + ' months</h2>' +
+    html: '<div class="card" id="' + id + '"><h2>' + esc(catName(cat)) + (sub ? ' › ' + esc(sub) : '') + ', last ' + sixKeys.length + ' months</h2>' +
       '<p class="cap">' + line + '</p>' +
       '<div id="' + id + '-chart"></div>' +
       '<div class="tbl-scroll" style="margin-top:12px"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
@@ -5595,20 +5610,21 @@ function catMonthDetail(k) {
   var rows = catRows(STATE.mCat, STATE.mSub).filter(function (t) { return monthKey(t.d) === k && catAmt(t) > 0; })
                                            .sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
   var bySub = {};
-  rows.forEach(function (t) { bySub[t.s] = (bySub[t.s] || 0) + catAmt(t); });
+  var G = isGroup(STATE.mCat);
+  rows.forEach(function (t) { var b = partOf(STATE.mCat, t); bySub[b] = (bySub[b] || 0) + catAmt(t); });
   var subs = Object.keys(bySub).sort(function (a, b) { return bySub[b] - bySub[a]; });
   var html = (!STATE.mSub && subs.length > 1
-      ? '<div class="exit-box" style="margin:6px 0 12px"><div class="lbl">By sub-category</div>' +
+      ? '<div class="exit-box" style="margin:6px 0 12px"><div class="lbl">By ' + (G ? 'category' : 'sub-category') + '</div>' +
           subs.map(function (x) { return kv(esc(x), Math.round(bySub[x])); }).join("") + '</div>'
       : '') +
     (rows.length
       ? '<div class="exit-box"><div class="lbl">' + nOf(rows.length, 'transaction') + '</div>' +
           rows.map(function (t) {
-            return txnLine(t, catAmt(t), STATE.mSub ? '' : t.s);
+            return txnLine(t, catAmt(t), STATE.mSub ? '' : G ? t.c + ' › ' + t.s : t.s);
           }).join("") + '</div>'
       : '<div class="empty">Nothing this month.</div>');
   return '<div class="m-detail">' + html +
-    (rows.length ? '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">Open these on the Transactions tab ›</button></p>' : '') +
+    (rows.length && !G ? '<p style="margin:12px 0 2px"><button class="linkish m-txns" data-m="' + k + '">Open these on the Transactions tab ›</button></p>' : '') +
     '</div>';
 }
 
@@ -5620,7 +5636,7 @@ function catMonthlyCard(allKeys) {
   var first = Object.keys(per).sort()[0];
   var keys = allKeys.filter(function (k) { return first && k >= first; });
   var idx = monthsIndex(DATA.txns).map;
-  var name = sub ? sub : cat;
+  var name = sub ? sub : catName(cat);
 
   // headline figures: this year and last year, as totals and as a monthly average
   var last = keys[keys.length - 1] || "", yNow = last.slice(0, 4), yPrev = String(+yNow - 1);
@@ -5670,7 +5686,7 @@ function catMonthlyCard(allKeys) {
   return (STATE.mSix ? STATE.mSix.html : '') + tiles +
     '<div class="card"><h2>' + esc(name) + ' each month</h2><p class="cap">' +
       mLabel() + '. Tap a bar to open that month below.</p><div id="m-cat-chart"></div></div>' +
-    '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(cat) + '</span>' : '') + ' month by month</h2>' +
+    '<div class="card"><h2>' + esc(name) + (sub ? ' <span class="muted" style="font-weight:500">· ' + esc(catName(cat)) + '</span>' : '') + ' month by month</h2>' +
     '<p class="cap">Newest first, from the first month it appears. Share is of that month\'s ' + (isInc ? 'income' : 'spending') +
       '. Tap a month for the transactions.</p>' +
     (body
@@ -5696,7 +5712,7 @@ function catPickers() {
       var g = groups[typ]; (g[t.c] = g[t.c] || {})[t.s || ""] = 1;
     });
   });
-  if (STATE.mCat && !groups.Expense[STATE.mCat] && !groups.Income[STATE.mCat]) { STATE.mCat = ""; STATE.mSub = ""; }
+  if (STATE.mCat && !isGroup(STATE.mCat) && !groups.Expense[STATE.mCat] && !groups.Income[STATE.mCat]) { STATE.mCat = ""; STATE.mSub = ""; }
   function opts(g) {
     return Object.keys(g).sort().map(function (c) {
       return '<option value="' + esc(c) + '"' + (c === STATE.mCat ? ' selected' : '') + '>' + esc(c) + '</option>';
@@ -5704,13 +5720,18 @@ function catPickers() {
   }
   var html = '<div class="f"><label for="m-cat">Show</label><select id="m-cat">' +
     '<option value="">Income vs expenses</option>' +
+    '<optgroup label="Spending type">' + Object.keys(SPEND_GROUPS).map(function (g) {
+      return '<option value="' + g + '"' + (g === STATE.mCat ? ' selected' : '') + '>' + SPEND_GROUPS[g] + '</option>';
+    }).join("") + '</optgroup>' +
     '<optgroup label="Spending">' + opts(groups.Expense) + '</optgroup>' +
     '<optgroup label="Income">' + opts(groups.Income) + '</optgroup></select></div>';
   if (STATE.mCat) {
-    var subs = Object.keys(groups.Expense[STATE.mCat] || groups.Income[STATE.mCat]).filter(Boolean).sort();
+    var G = isGroup(STATE.mCat), seen = {};
+    if (G) catRows(STATE.mCat).forEach(function (t) { if (t.c) seen[t.c] = 1; });
+    var subs = Object.keys(G ? seen : (groups.Expense[STATE.mCat] || groups.Income[STATE.mCat])).filter(Boolean).sort();
     if (STATE.mSub && subs.indexOf(STATE.mSub) < 0) STATE.mSub = "";
-    html += '<div class="f"><label for="m-sub">Sub-category</label><select id="m-sub">' +
-      '<option value="">All of ' + esc(STATE.mCat) + '</option>' +
+    html += '<div class="f"><label for="m-sub">' + (G ? 'Category' : 'Sub-category') + '</label><select id="m-sub">' +
+      '<option value="">All ' + (G ? esc(catName(STATE.mCat).toLowerCase()) : 'of ' + esc(STATE.mCat)) + '</option>' +
       subs.map(function (x) { return '<option value="' + esc(x) + '"' + (x === STATE.mSub ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") +
       '</select></div>';
   }
@@ -5856,7 +5877,7 @@ function renderMonthly() {
     cr.forEach(function (t) { var k = monthKey(t.d); cv[k] = (cv[k] || 0) + catAmt(t); });
     var firstK = Object.keys(cv).sort()[0];
     ck = ck.filter(function (k) { return firstK && k >= firstK; });
-    chartSubTrend(el("m-cat-chart"), ck, ck.map(function (k) { return cv[k] || 0; }), STATE.mSub || STATE.mCat, function (k) {
+    chartSubTrend(el("m-cat-chart"), ck, ck.map(function (k) { return cv[k] || 0; }), STATE.mSub || catName(STATE.mCat), function (k) {
       STATE.mcOpen[k] = true; renderMonthly();
       var r = host.querySelector('tr.tax-row[data-key="' + k + '"]');
       if (r) r.scrollIntoView({ block: "start" });
