@@ -1025,7 +1025,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v106";
+var APP_BUILD = "finances-shell-v107";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1950,7 +1950,7 @@ function chartNetLine(container, keys, map, fit, onPick) {
    5. Views
    ===================================================================== */
 
-var STATE = { ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "last12" /* opens on the last 12 months (Vinod, 2 Nov 2026), as Overview does; years and "All years" are in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
+var STATE = { mTopNoRec: (function () { try { return localStorage.getItem("ft.mTopRec") === "out"; } catch (e) { return false; } })(), ovTaxOpen: {}, mOneOff: (function () { try { return !!localStorage.getItem("ft.mOneOff"); } catch (e) { return false; } })(), mOpen: {}, mYear: "last12" /* opens on the last 12 months (Vinod, 2 Nov 2026), as Overview does; years and "All years" are in the picker */, mCat: "", mSub: "", mcOpen: {}, tab: "overview", month: null, salMonth: null, spendScope: "month", spendCat: null, spendSub: null, fitScale: true,
               tq: "", tAcct: "", tCat: "", tSub: "", tType: "", tMonth: null, tLimit: 200,
               insFilter: "", billFilter: "" };
 
@@ -5811,6 +5811,14 @@ function renderMonthly() {
     if (!box) return;
     if (shown.indexOf(STATE.mPick) < 0) STATE.mPick = shown[0];
     box.innerHTML = topExpCard(STATE.mPick);
+    box.querySelectorAll("button[data-rec]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        STATE.mTopNoRec = !b.getAttribute("data-rec");
+        try { localStorage.setItem("ft.mTopRec", STATE.mTopNoRec ? "out" : ""); } catch (er) { /* private mode */ }
+        drawTopExp();
+      });
+    });
     host.querySelectorAll("tr.tax-row").forEach(function (r) {
       r.classList.toggle("m-picked", r.getAttribute("data-key") === STATE.mPick);
     });
@@ -5870,21 +5878,40 @@ function renderMonthly() {
 /* Top expenses (Vinod, 4 Nov 2026): a card under Month by month listing the
    seven biggest expenses of whichever month was tapped last -- in the table or
    either chart -- so the month can be read without opening its row. Opens on
-   the newest month shown. Every charted expense counts, recurring ones and
-   one-offs alike. */
+   the newest month shown. Its switch can leave out the payments that come
+   round every month (isRecurring), remembered in localStorage ft.mTopRec;
+   recurring payments are included unless he turns them off. */
 var TOP_EXP_N = 7;
+function isRecurring(t) {
+  var n = (t.n || "").toLowerCase();
+  if (t.c === "Loans & EMI" || t.c === "Utilities") return true;
+  if (t.s === "Rent" || t.s === "Home Loan" || t.s === "Pet Food" || t.s === "Cook") return true;
+  if (n.indexOf("emi payment") >= 0) return true;                       // card EMI instalments
+  if (t.c === "Subscriptions" && n.indexOf("annual") < 0) return true;  // a yearly plan is not monthly
+  return false;
+}
 function topExpCard(k) {
-  if (!k) return '<h2>Top expenses</h2><div class="empty">No months to show.</div>';
-  var rows = DATA.txns.filter(function (t) {
+  var noRec = !!STATE.mTopNoRec;
+  var seg = '<div class="filters" style="margin:4px 0 10px"><div class="f"><label>Monthly recurring</label><div class="seg">' +
+      '<button data-rec="1" aria-pressed="' + !noRec + '">Included</button>' +
+      '<button data-rec="" aria-pressed="' + noRec + '">Left out</button></div></div></div>';
+  if (!k) return '<h2>Top expenses</h2>' + seg + '<div class="empty">No months to show.</div>';
+  var month = DATA.txns.filter(function (t) {
     return charted(t) && t.t === "Expense" && t.db > 0 && monthKey(t.d) === k;
-  }).sort(function (a, b) { return b.db - a.db; });
-  var all = rows.reduce(function (s, t) { return s + t.db; }, 0);
+  });
+  var rec = month.filter(isRecurring), recSum = rec.reduce(function (s, t) { return s + t.db; }, 0);
+  var rows = (noRec ? month.filter(function (t) { return !isRecurring(t); }) : month)
+    .sort(function (a, b) { return b.db - a.db; });
+  var all = month.reduce(function (s, t) { return s + t.db; }, 0);
   var top = rows.slice(0, TOP_EXP_N);
   var sum = top.reduce(function (s, t) { return s + t.db; }, 0);
   return '<h2>Top expenses · ' + monthLabel(k) + '</h2>' +
-    '<p class="cap">The ' + top.length + ' biggest of ' + rows.length + ' expenses in ' + monthLabel(k) +
+    '<p class="cap">The ' + top.length + ' biggest of ' + rows.length + (noRec ? ' non-recurring' : '') +
+      ' expenses in ' + monthLabel(k) +
       (all > 0 ? ': ' + money(sum) + ', ' + Math.round(sum / all * 100) + '% of the month\'s ' + money(all) : '') +
-      '. Tap another month above to switch.</p>' +
+      (noRec && rec.length ? '. Left out: ' + money(recSum) + ' of monthly recurring payments (rent, EMIs, utilities, ' +
+        'monthly subscriptions, pet food, cook)' : '') +
+      '. Tap another month above to switch.</p>' + seg +
     (top.length ? top.map(function (t) {
       return txnLine(t, t.db, t.c + ' / ' + t.s);
     }).join("") : '<div class="empty">No expenses this month.</div>');
