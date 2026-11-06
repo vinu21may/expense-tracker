@@ -265,7 +265,6 @@ nav.tabs button[data-tab="tax"]       { --tint: #fb923c; }
 nav.tabs button[data-tab="amma"]      { --tint: #fb7185; }
 nav.tabs button[data-tab="insurance"] { --tint: #22d3ee; }
 nav.tabs button[data-tab="emergency"] { --tint: #ef4444; }
-nav.tabs button[data-tab="habits"]    { --tint: #a3e635; }
 nav.tabs button svg {
   width: 32px; height: 32px; padding: 7px; box-sizing: border-box; flex: none; border-radius: 10px;
   color: color-mix(in srgb, var(--tint) 72%, var(--glass-ink));
@@ -804,59 +803,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .mat-pay.none { font-weight: 500; color: var(--muted); }
 .mat-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid);
   font-size: 12.5px; color: var(--muted); }
-/* ----------------------------------------------------------------- habits (v111) */
-.hb-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; font-size: 14px; }
-.hb-nav b { min-width: 120px; text-align: center; }
-.hb-mini { min-height: 34px; padding: 6px 12px; font-size: 13.5px; border-radius: 9px; }
-.hb-mini:disabled { opacity: .4; cursor: default; }
-.hb-today { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.hb-btn { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; padding: 14px;
-  border-radius: 14px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.hb-btn .ck { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border);
-  display: grid; place-items: center; transition: background .15s, border-color .15s; }
-.hb-btn .ck svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
-.hb-btn.on { border-color: color-mix(in srgb, var(--good) 55%, var(--border)); background-color: color-mix(in srgb, var(--good) 12%, var(--surface-1)); }
-.hb-btn.on .ck { background: var(--good); border-color: var(--good); }
-.hb-btn.on .ck svg { opacity: 1; }
-.hb-btn .nm { display: block; font-size: 15px; font-weight: 600; }
-.hb-btn .st { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); margin-top: 2px; }
-.hb-btn .st .warn { color: var(--warning); }
-.hb-suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-table.hb-grid { width: auto; font-size: 12px; }
-table.hb-grid th, table.hb-grid td { padding: 3px 1px; text-align: center; border-bottom: none; vertical-align: middle; }
-table.hb-grid th { font-size: 10.5px; letter-spacing: 0; color: var(--muted); }
-table.hb-grid th span { display: block; font-size: 9.5px; opacity: .7; }
-table.hb-grid th.we { color: var(--text-secondary); }
-table.hb-grid th.now { color: var(--series-1); }
-table.hb-grid .hb-name { text-align: left; padding-right: 10px; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis;
-  position: sticky; left: 0; background: var(--surface-1); z-index: 1; font-size: 13px; font-weight: 600; text-transform: none; }
-table.hb-grid .hb-pct { padding-left: 10px; font-weight: 600; white-space: nowrap; font-size: 12.5px; }
-.hb-cell { display: block; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 6px;
-  background: var(--track); border: 1px solid var(--border); margin: 0 auto; }
-.hb-cell.on { background: var(--good); border-color: var(--good); }
-.hb-cell.pre { opacity: .35; }
-.hb-cell.fut { opacity: .25; border-style: dashed; background: none; }
-.hb-heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; padding: 2px 0 6px; }
-.hb-heat i, .hb-legend i { display: block; width: 12px; height: 12px; border-radius: 3px; background: var(--track); }
-.hb-heat i.blank { background: none; }
-.hb-heat i.l0, .hb-legend i.l0 { background: color-mix(in srgb, var(--critical) 22%, var(--track)); }
-.hb-heat i.l1, .hb-legend i.l1 { background: color-mix(in srgb, var(--good) 30%, var(--track)); }
-.hb-heat i.l2, .hb-legend i.l2 { background: color-mix(in srgb, var(--good) 55%, var(--track)); }
-.hb-heat i.l3, .hb-legend i.l3 { background: color-mix(in srgb, var(--good) 78%, var(--track)); }
-.hb-heat i.l4, .hb-legend i.l4 { background: var(--good); }
-.hb-legend { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
-.hb-legend span { margin: 0 4px; }
-.hb-wk { align-items: center; }
-.hb-wk > span:first-child { width: 36px; }
-.hb-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
-.hb-bar i { display: block; height: 100%; border-radius: 999px; background-color: var(--good); }
-.hb-add { display: flex; gap: 8px; margin-bottom: 12px; }
-.hb-add input { margin: 0; flex: 1; }
-.hb-go { flex: none; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
-.hb-acts { white-space: nowrap; text-align: right; }
-.hb-acts .hb-mini + .hb-mini { margin-left: 6px; }
-.hb-steps { margin: 0 0 14px; padding-left: 20px; font-size: 14px; line-height: 1.55; color: var(--text-secondary); }
-.hb-steps b { color: var(--text-primary); }
 .muted { color: var(--muted); }
 .empty { padding: 28px 4px; text-align: center; color: var(--muted); font-size: 14px; }
 .foot { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
@@ -1026,8 +972,6 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
       <button role="tab" data-tab="amma" data-tip="Amma" aria-label="Amma" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span class="lbl">Amma</span></button>
       <button role="tab" data-tab="insurance" data-tip="Insurance" aria-label="Insurance" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="m9 12 2 2 4-4"/></svg><span class="lbl">Insurance</span></button>
       <button role="tab" data-tab="emergency" data-tip="Emergency" aria-label="Emergency" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span class="lbl">Emergency</span></button>
-      <div class="sb-group" aria-hidden="true">Personal</div>
-      <button role="tab" data-tab="habits" data-tip="Habits" aria-label="Habits" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4"/><path d="m8.5 13.5 2.5 2.5 4.5-5"/></svg><span class="lbl">Habits</span></button>
     </nav>
     <div class="sb-foot">
       <button class="sb-toggle" id="sb-toggle" aria-label="Collapse sidebar" aria-expanded="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg><span class="lbl">Collapse</span></button>
@@ -1062,7 +1006,6 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
     <section id="tab-tax"       class="hide"></section>
     <section id="tab-amma"      class="hide"></section>
     <section id="tab-invest"   class="hide"></section>
-    <section id="tab-habits"   class="hide"></section>
     <div class="foot" id="foot"></div>
   </main>
   </div>
@@ -1088,7 +1031,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v111";
+var APP_BUILD = "finances-shell-v110";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6970,458 +6913,6 @@ el("sel-clear").addEventListener("click", function () {
 });
 
 /* =====================================================================
-   5h. Habits (v111, 6 Nov 2026) — the idea borrowed from a habit-tracker
-   template: tick each habit daily, see streaks, a month grid and the year.
-   -----------------------------------------------------------------
-   This is the one thing the app WRITES. Ticks live in the private repository
-   habits-data (habits.json), written with a second key that can write to that
-   repository only (ft.habitToken); the finance key stays read-only. Every
-   change is kept on the device first (ft.habits), so ticking works offline and
-   syncs later. Merging is per entry, newest change wins: each habit carries the
-   time it last changed (t), and each day's tick is +time (done) or -time
-   (undone), so two devices ticking different things never lose either.
-   ===================================================================== */
-
-var HB_REPO = "habits-data", HB_PATH = "habits.json";
-var HB_LS = { data: "ft.habits", token: "ft.habitToken", synced: "ft.habitSynced" };
-var HB = { day: null, month: null, year: null, busy: null, again: false, timer: null, err: "", last: 0 };
-var HB_SUGGEST = ["Walk 30 minutes", "Read 20 pages", "Meditate 10 minutes", "No sugar", "Drink 8 glasses of water", "Asleep by 11"];
-var WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function hbBlank() { return { v: 1, habits: {}, ticks: {} }; }
-function hbLoad() {
-  try {
-    var d = JSON.parse(localStorage.getItem(HB_LS.data) || "null");
-    if (d && d.habits && d.ticks) return d;
-  } catch (e) {}
-  return hbBlank();
-}
-var HBD = hbLoad();
-
-function hbSave() { try { localStorage.setItem(HB_LS.data, JSON.stringify(HBD)); } catch (e) {} }
-function hbToken() { try { return localStorage.getItem(HB_LS.token) || ""; } catch (e) { return ""; } }
-function hbOwner() { try { return localStorage.getItem(LS.owner) || "vinu21may"; } catch (e) { return "vinu21may"; } }
-
-function hbMerge(a, b) {
-  var out = hbBlank();
-  [a, b].forEach(function (src) {
-    if (!src) return;
-    Object.keys(src.habits || {}).forEach(function (id) {
-      var h = src.habits[id], cur = out.habits[id];
-      if (!cur || (h.t || 0) > (cur.t || 0)) { out.habits[id] = JSON.parse(JSON.stringify(h)); out.habits[id].id = id; }
-    });
-    Object.keys(src.ticks || {}).forEach(function (day) {
-      var row = src.ticks[day], o = out.ticks[day] || (out.ticks[day] = {});
-      Object.keys(row).forEach(function (id) {
-        if (o[id] == null || Math.abs(row[id]) > Math.abs(o[id])) o[id] = row[id];
-      });
-    });
-  });
-  return out;
-}
-// the same data always prints the same, so "has anything changed?" is a string compare
-function hbCanon(x) {
-  if (Array.isArray(x)) return "[" + x.map(hbCanon).join(",") + "]";
-  if (x && typeof x === "object") {
-    return "{" + Object.keys(x).sort().map(function (k) { return JSON.stringify(k) + ":" + hbCanon(x[k]); }).join(",") + "}";
-  }
-  return JSON.stringify(x);
-}
-
-/* ---------------------------------------------------------- the numbers */
-
-function hbAdd(day, n) { var d = new Date(day + "T00:00:00"); d.setDate(d.getDate() + n); return isoDate(d); }
-function hbToday() { return isoDate(new Date()); }
-function hbDone(day, id) { var r = HBD.ticks[day]; return !!(r && r[id] > 0); }
-
-function hbHabits(withArchived) {
-  return Object.keys(HBD.habits).map(function (id) { var h = HBD.habits[id]; h.id = id; return h; })
-    .filter(function (h) { return !h.deleted && (withArchived || !h.archived); })
-    .sort(function (a, b) { return (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name); });
-}
-// a habit counts from the day it was added, or the earliest day ticked if that is before
-var HB_START = {};   // cleared on every render: ticks can move a start earlier
-function hbStart(h) {
-  if (HB_START[h.id]) return HB_START[h.id];
-  var s = h.created;
-  Object.keys(HBD.ticks).forEach(function (d) { if (d < s && hbDone(d, h.id)) s = d; });
-  return (HB_START[h.id] = s);
-}
-function hbActiveOn(h, day) { return day >= hbStart(h) && (!h.archived || day < h.archived); }
-
-function hbStats(h) {
-  var today = hbToday(), start = hbStart(h), end = h.archived ? hbAdd(h.archived, -1) : today;
-  var run = 0, best = 0, done = 0, days = 0, comebacks = 0, missed = false;
-  for (var d = start; d <= end; d = hbAdd(d, 1)) {
-    if (d === today && !hbDone(d, h.id)) break;          // today is still in progress
-    days++;
-    if (hbDone(d, h.id)) {
-      if (run === 0 && missed) comebacks++;
-      run++; done++; if (run > best) best = run;
-    } else { run = 0; missed = true; }
-  }
-  return { cur: run, best: best, done: done, days: days, comebacks: comebacks, start: start };
-}
-
-// done / possible over a range of days, for the given habits
-function hbRate(list, from, to) {
-  var today = hbToday(), done = 0, poss = 0;
-  if (to > today) to = today;
-  for (var d = from; d <= to; d = hbAdd(d, 1)) {
-    list.forEach(function (h) {
-      if (!hbActiveOn(h, d)) return;
-      if (d === today && !hbDone(d, h.id)) return;       // not a miss yet
-      poss++; if (hbDone(d, h.id)) done++;
-    });
-  }
-  return { done: done, poss: poss, pct: poss ? Math.round(done * 100 / poss) : null };
-}
-function hbPct(p) { return p == null ? "—" : p + "%"; }
-function hbMonthEnd(mk) { var d = new Date(+mk.slice(0, 4), +mk.slice(5, 7), 0); return isoDate(d); }
-function hbDayLong(d) {
-  return new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-}
-
-/* ------------------------------------------------------------- changes */
-
-function hbChanged() {
-  hbSave();
-  renderHabits();
-  clearTimeout(HB.timer);
-  HB.timer = setTimeout(function () { hbSync(); }, 1200);
-}
-function hbToggle(day, id) {
-  var r = HBD.ticks[day] || (HBD.ticks[day] = {});
-  r[id] = (hbDone(day, id) ? -1 : 1) * Date.now();
-  hbChanged();
-}
-function hbAddHabit(name) {
-  name = String(name || "").trim().slice(0, 60);
-  if (!name) return;
-  var exists = hbHabits(true).filter(function (h) { return h.name.toLowerCase() === name.toLowerCase(); })[0];
-  if (exists) {
-    if (exists.archived) { exists.archived = false; exists.t = Date.now(); hbChanged(); }
-    else alert("You already have “" + name + "”.");
-    return;
-  }
-  var max = 0; hbHabits(true).forEach(function (h) { max = Math.max(max, h.order || 0); });
-  var id = "h" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  HBD.habits[id] = { name: name, order: max + 1, created: hbToday(), archived: false, t: Date.now() };
-  hbChanged();
-}
-function hbEdit(id, what) {
-  var h = HBD.habits[id]; if (!h) return;
-  if (what === "rename") {
-    var n = prompt("New name for this habit", h.name);
-    if (n == null || !n.trim()) return;
-    h.name = n.trim().slice(0, 60);
-  } else if (what === "archive") {
-    h.archived = hbToday();
-  } else if (what === "restore") {
-    h.archived = false;
-  } else if (what === "delete") {
-    if (!confirm("Delete “" + h.name + "” and all its ticks? To keep its history, use Pause instead.")) return;
-    h.deleted = true;
-  } else if (what === "up" || what === "down") {
-    var list = hbHabits(false), i = list.indexOf(h), j = what === "up" ? i - 1 : i + 1;
-    if (i < 0 || j < 0 || j >= list.length) return;
-    list.forEach(function (x, k) { x.order = k + 1; x.t = Date.now(); });
-    var o = list[i].order; list[i].order = list[j].order; list[j].order = o;
-  }
-  h.t = Date.now();
-  hbChanged();
-}
-
-/* ---------------------------------------------------------------- sync */
-
-function hbB64enc(s) { return btoa(unescape(encodeURIComponent(s))); }
-function hbB64dec(s) { return decodeURIComponent(escape(atob(String(s).replace(/\s/g, "")))); }
-
-function hbApi(method, body, token) {
-  var h = { "Authorization": "Bearer " + (token || hbToken()), "Accept": "application/vnd.github+json" };
-  if (body) h["Content-Type"] = "application/json";
-  return fetch("https://api.github.com/repos/" + encodeURIComponent(hbOwner()) + "/" + HB_REPO + "/contents/" + HB_PATH, {
-    method: method, cache: "no-store", headers: h, body: body ? JSON.stringify(body) : undefined
-  });
-}
-function hbErr(status) {
-  if (status === 401) return new Error("The habit sync key was rejected. It may have expired: make a new one and paste it below.");
-  if (status === 403) return new Error("That key can read but not save. It needs Contents: Read and write on habits-data.");
-  if (status === 404) return new Error("That key can't see the habits-data repository. When making it, pick habits-data under Only select repositories.");
-  return new Error("GitHub returned an error (" + status + ").");
-}
-function hbGet(token) {
-  return hbApi("GET", null, token).then(function (r) {
-    if (!r.ok) throw hbErr(r.status);
-    return r.json().then(function (j) { return { sha: j.sha, data: JSON.parse(hbB64dec(j.content)) }; });
-  });
-}
-
-function hbSetStatus() {
-  var s = el("hb-status"); if (!s) return;
-  s.innerHTML = hbStatusHtml();
-}
-function hbStatusHtml() {
-  if (!hbToken()) return '<span class="pill warn">This device only</span> Set up sync at the bottom of this tab so ticks reach your other devices.';
-  if (HB.busy) return '<span class="pill">Syncing…</span>';
-  if (HB.err) return '<span class="pill bad">Not synced</span> ' + esc(HB.err);
-  var t = 0; try { t = +localStorage.getItem(HB_LS.synced) || 0; } catch (e) {}
-  return t ? '<span class="pill ok">Synced</span> ' + new Date(t).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) : '<span class="pill">Not synced yet</span>';
-}
-
-function hbSync(attempt) {
-  if (!hbToken()) { hbSetStatus(); return Promise.resolve(); }
-  if (HB.busy) { HB.again = true; return HB.busy; }
-  var before = hbCanon(HBD);
-  HB.err = "";
-  HB.busy = hbGet().then(function (remote) {
-    HBD = hbMerge(remote.data, HBD);   // HBD here includes anything ticked while the fetch was out
-    hbSave();
-    if (hbCanon(HBD) === hbCanon(remote.data)) return;
-    return hbApi("PUT", {
-      message: "Habits from " + (navigator.platform || "a device") + ", " + new Date().toISOString().slice(0, 16).replace("T", " "),
-      content: hbB64enc(JSON.stringify(HBD)), sha: remote.sha
-    }).then(function (r) {
-      if (r.status === 409 || r.status === 422) { var e = new Error("conflict"); e.retry = true; throw e; }
-      if (!r.ok) throw hbErr(r.status);
-    });
-  }).then(function () {
-    try { localStorage.setItem(HB_LS.synced, String(Date.now())); } catch (e) {}
-    HB.last = Date.now();
-  }, function (e) {
-    if (e.retry && (attempt || 0) < 2) { HB.again = true; return; }   // another device saved first: fetch and merge again
-    HB.err = e instanceof TypeError ? "No connection. Your ticks are kept on this device and will sync later." : e.message;
-  }).then(function () {
-    HB.busy = null;
-    var changed = hbCanon(HBD) !== before;
-    if (HB.again) { HB.again = false; return hbSync((attempt || 0) + 1); }
-    var typing = document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
-    if (changed && STATE.tab === "habits" && !typing) renderHabits(); else hbSetStatus();
-  });
-  hbSetStatus();
-  return HB.busy;
-}
-
-function hbSaveKey() {
-  var inp = el("hb-key"), btn = el("hb-key-go"), key = inp ? inp.value.trim() : "";
-  if (!key) return;
-  btn.disabled = true; btn.textContent = "Checking…";
-  // reading proves the key reaches habits-data; a key that can't write is caught
-  // by the first save, which then says so in the status line
-  hbGet(key).then(function () {
-    localStorage.setItem(HB_LS.token, key);
-    HB.err = ""; HB.last = 0;
-    renderHabits();
-  }).catch(function (e) {
-    btn.disabled = false; btn.textContent = "Save key";
-    alert(e instanceof TypeError ? "No connection. Try again when you're online." : e.message);
-  });
-}
-
-document.addEventListener("visibilitychange", function () {
-  if (document.visibilityState === "visible" && STATE.tab === "habits" && DATA) hbSync();
-});
-window.addEventListener("online", function () { if (hbToken()) hbSync(); });
-
-/* -------------------------------------------------------------- render */
-
-function renderHabits() {
-  var host = el("tab-habits");
-  HB_START = {};
-  var today = hbToday(), day = HB.day && HB.day < today ? HB.day : today;
-  var list = hbHabits(false), archived = hbHabits(true).filter(function (h) { return h.archived; });
-  var stats = {}; hbHabits(true).forEach(function (h) { stats[h.id] = hbStats(h); });
-  var mk = HB.month || monthKey(today), yr = HB.year || today.slice(0, 4);
-
-  // ---- today (or the day picked)
-  var doneN = list.filter(function (h) { return hbActiveOn(h, day) && hbDone(day, h.id); }).length;
-  var activeN = list.filter(function (h) { return hbActiveOn(h, day) || day >= today; }).length;
-  var btns = list.map(function (h) {
-    var on = hbDone(day, h.id), s = stats[h.id], note;
-    if (day === today && !on && s.days > 0) {
-      var y1 = hbAdd(today, -1), y2 = hbAdd(today, -2);
-      if (y1 >= s.start && !hbDone(y1, h.id)) {
-        note = (y2 >= s.start && !hbDone(y2, h.id)) ? '<span class="warn">Missed 2 days. Restart today</span>' : '<span class="warn">Missed yesterday. Don\'t miss twice</span>';
-      }
-    }
-    if (!note) note = s.cur ? s.cur + "-day streak" + (s.best > s.cur ? " · best " + s.best : " · your best") : (s.best ? "Best streak " + s.best : "Start a streak");
-    return '<button class="hb-btn' + (on ? ' on' : '') + '" data-hb-tick="' + esc(h.id) + '" aria-pressed="' + on + '">' +
-      '<span class="ck" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></span>' +
-      '<span><span class="nm">' + esc(h.name) + '</span><span class="st">' + note + '</span></span></button>';
-  }).join("");
-
-  var todayCard = '<div class="card"><h2>' + (day === today ? "Today" : "Catching up") + '</h2>' +
-    '<div class="hb-nav"><button class="hb-mini" data-hb-day="-1" aria-label="Previous day">‹</button>' +
-      '<b>' + hbDayLong(day) + '</b>' +
-      '<button class="hb-mini" data-hb-day="1" aria-label="Next day"' + (day >= today ? ' disabled' : '') + '>›</button>' +
-      (day !== today ? '<button class="hb-mini" data-hb-day="0">Back to today</button>' : '') +
-      (list.length ? '<span class="muted">' + doneN + ' of ' + activeN + ' done</span>' : '') + '</div>' +
-    (list.length ? '<div class="hb-today">' + btns + '</div>'
-      : '<div class="empty" style="padding:14px 4px">No habits yet. Tap one to add it, or type your own under Your habits.</div>' +
-        '<div class="hb-suggest">' + HB_SUGGEST.map(function (n) { return '<button class="hb-mini" data-hb-suggest="' + esc(n) + '">+ ' + esc(n) + '</button>'; }).join("") + '</div>') +
-    '<p class="cap" id="hb-status" style="margin:14px 0 0">' + hbStatusHtml() + '</p></div>';
-
-  // ---- tiles
-  var monthRate = hbRate(list, mk + "-01", hbMonthEnd(mk));
-  var curMonthRate = hbRate(list, monthKey(today) + "-01", today);
-  var bestCur = null, bestEver = null;
-  hbHabits(true).forEach(function (h) {
-    var s = stats[h.id];
-    if (!h.archived && (!bestCur || s.cur > stats[bestCur.id].cur)) bestCur = h;
-    if (!bestEver || s.best > stats[bestEver.id].best) bestEver = h;
-  });
-  var tiles = list.length ? '<div class="grid k4" style="margin-bottom:16px">' +
-    '<div class="tile"><div class="lbl">Today</div><div class="val">' + list.filter(function (h) { return hbDone(today, h.id); }).length + ' / ' + list.length + '</div><div class="sub">habits done</div></div>' +
-    '<div class="tile"><div class="lbl">This month</div><div class="val">' + hbPct(curMonthRate.pct) + '</div><div class="sub">' + curMonthRate.done + ' of ' + curMonthRate.poss + ' ticks so far</div></div>' +
-    '<div class="tile"><div class="lbl">Longest running</div><div class="val">' + (bestCur ? stats[bestCur.id].cur : 0) + ' days</div><div class="sub">' + (bestCur && stats[bestCur.id].cur ? esc(bestCur.name) : "No streak running") + '</div></div>' +
-    '<div class="tile"><div class="lbl">Best ever</div><div class="val">' + (bestEver ? stats[bestEver.id].best : 0) + ' days</div><div class="sub">' + (bestEver && stats[bestEver.id].best ? esc(bestEver.name) : "—") + '</div></div>' +
-    '</div>' : '';
-
-  // ---- month grid
-  var days = []; for (var d = mk + "-01", end = hbMonthEnd(mk); d <= end; d = hbAdd(d, 1)) days.push(d);
-  var grid = '';
-  if (list.length) {
-    grid = '<div class="card"><h2>Month by month</h2>' +
-      '<p class="cap">Tap a square to tick or untick that day. Faint squares are before the habit started.</p>' +
-      '<div class="hb-nav"><button class="hb-mini" data-hb-month="-1" aria-label="Previous month">‹</button><b>' + monthLabel(mk) + '</b>' +
-      '<button class="hb-mini" data-hb-month="1" aria-label="Next month"' + (mk >= monthKey(today) ? ' disabled' : '') + '>›</button>' +
-      '<span class="muted">' + hbPct(monthRate.pct) + ' done</span></div>' +
-      '<div class="tbl-scroll"><table class="hb-grid"><thead><tr><th class="hb-name">Habit</th>' +
-      days.map(function (d) {
-        var wd = (new Date(d + "T00:00:00").getDay() + 6) % 7;
-        return '<th class="' + (wd >= 5 ? 'we' : '') + (d === today ? ' now' : '') + '"><span>' + WEEKDAYS[wd][0] + '</span>' + (+d.slice(8)) + '</th>';
-      }).join("") + '<th class="hb-pct">Month</th></tr></thead><tbody>' +
-      list.map(function (h) {
-        var r = hbRate([h], mk + "-01", hbMonthEnd(mk));
-        return '<tr><td class="hb-name">' + esc(h.name) + '</td>' + days.map(function (d) {
-          if (d > today) return '<td><span class="hb-cell fut"></span></td>';
-          var on = hbDone(d, h.id), pre = !hbActiveOn(h, d);
-          return '<td><button class="hb-cell' + (on ? ' on' : '') + (pre ? ' pre' : '') + '" data-hb-cell="' + d + '|' + esc(h.id) + '" aria-label="' + esc(h.name) + ', ' + dayLabel(d) + (on ? ', done' : '') + '"></button></td>';
-        }).join("") + '<td class="hb-pct">' + hbPct(r.pct) + '</td></tr>';
-      }).join("") +
-      '</tbody></table></div></div>';
-  }
-
-  // ---- the year
-  var yearCard = '';
-  if (list.length || archived.length) {
-    var all = hbHabits(true), y0 = yr + "-01-01", y1 = yr + "-12-31";
-    var lead = (new Date(y0 + "T00:00:00").getDay() + 6) % 7, cells = '';
-    for (var i = 0; i < lead; i++) cells += '<i class="blank"></i>';
-    for (var dd = y0; dd <= y1; dd = hbAdd(dd, 1)) {
-      var rr = dd > today ? { pct: null } : hbRate(all, dd, dd);
-      var lvl = rr.pct == null ? "" : rr.pct === 0 ? "l0" : rr.pct < 34 ? "l1" : rr.pct < 67 ? "l2" : rr.pct < 100 ? "l3" : "l4";
-      cells += '<i class="' + lvl + '" title="' + dayLabel(dd) + (rr.pct == null ? '' : ': ' + rr.pct + '%') + '"></i>';
-    }
-    var yRate = hbRate(all, y0, y1);
-    var bestM = null;
-    for (var m = 1; m <= 12; m++) {
-      var mkk = yr + "-" + String(m).padStart(2, "0");
-      if (mkk > monthKey(today)) break;
-      var mr = hbRate(all, mkk + "-01", hbMonthEnd(mkk));
-      if (mr.pct != null && (!bestM || mr.pct > bestM.pct)) bestM = { k: mkk, pct: mr.pct };
-    }
-    var bestH = null;
-    all.forEach(function (h) { var r = hbRate([h], y0, y1); if (r.pct != null && (!bestH || r.pct > bestH.pct)) bestH = { h: h, pct: r.pct }; });
-    var wk = [0, 0, 0, 0, 0, 0, 0].map(function () { return { done: 0, poss: 0 }; });
-    for (var wd = y0; wd <= y1 && wd <= today; wd = hbAdd(wd, 1)) {
-      var w = (new Date(wd + "T00:00:00").getDay() + 6) % 7, x = hbRate(all, wd, wd);
-      wk[w].done += x.done; wk[w].poss += x.poss;
-    }
-    var comebacks = 0; all.forEach(function (h) { comebacks += stats[h.id].comebacks; });
-    var hasEarlier = Object.keys(HBD.ticks).some(function (k) { return k < y0; });
-    yearCard = '<div class="card"><h2>A year of showing up</h2>' +
-      '<p class="cap">Each square is a day, darker when more of your habits were done.</p>' +
-      '<div class="hb-nav"><button class="hb-mini" data-hb-year="-1" aria-label="Previous year"' + (hasEarlier ? '' : ' disabled') + '>‹</button><b>' + yr + '</b>' +
-      '<button class="hb-mini" data-hb-year="1" aria-label="Next year"' + (yr >= today.slice(0, 4) ? ' disabled' : '') + '>›</button></div>' +
-      '<div class="tbl-scroll"><div class="hb-heat">' + cells + '</div></div>' +
-      '<div class="hb-legend"><span>Less</span><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>More</span></div>' +
-      '<div class="grid k2" style="margin-top:14px"><div class="tax-lines">' +
-        '<div class="kv"><span>Done this year</span><b>' + hbPct(yRate.pct) + '</b></div>' +
-        '<div class="kv"><span>Best month</span><b>' + (bestM ? monthLabel(bestM.k) + ' · ' + bestM.pct + '%' : '—') + '</b></div>' +
-        '<div class="kv"><span>Best habit</span><b>' + (bestH ? esc(bestH.h.name) + ' · ' + bestH.pct + '%' : '—') + '</b></div>' +
-        '<div class="kv"><span>Comebacks</span><b>' + comebacks + '</b></div>' +
-        '<div class="kv note"><span>A comeback is starting a habit again after missing a day.</span></div>' +
-      '</div><div class="tax-lines">' +
-        wk.map(function (v, i) {
-          var p = v.poss ? Math.round(v.done * 100 / v.poss) : null;
-          return '<div class="kv hb-wk"><span>' + WEEKDAYS[i] + '</span><span class="hb-bar"><i style="width:' + (p || 0) + '%"></i></span><b>' + hbPct(p) + '</b></div>';
-        }).join("") +
-      '</div></div></div>';
-  }
-
-  // ---- manage
-  function row(h, isArch) {
-    var s = stats[h.id];
-    return '<tr><td><b>' + esc(h.name) + '</b><div class="em-where">Since ' + dayLabel(s.start) + ' ' + s.start.slice(0, 4) +
-        (isArch ? ' · paused ' + dayLabel(h.archived) : '') + '</div></td>' +
-      '<td class="num">' + s.cur + '</td><td class="num">' + s.best + '</td><td class="num">' + hbPct(s.days ? Math.round(s.done * 100 / s.days) : null) + '</td>' +
-      '<td class="hb-acts">' + (isArch
-        ? '<button class="hb-mini" data-hb-edit="restore" data-id="' + esc(h.id) + '">Restore</button><button class="hb-mini" data-hb-edit="delete" data-id="' + esc(h.id) + '">Delete</button>'
-        : '<button class="hb-mini" data-hb-edit="up" data-id="' + esc(h.id) + '" aria-label="Move up">↑</button><button class="hb-mini" data-hb-edit="down" data-id="' + esc(h.id) + '" aria-label="Move down">↓</button>' +
-          '<button class="hb-mini" data-hb-edit="rename" data-id="' + esc(h.id) + '">Rename</button><button class="hb-mini" data-hb-edit="archive" data-id="' + esc(h.id) + '">Pause</button>') +
-      '</td></tr>';
-  }
-  var manage = '<div class="card"><h2>Your habits</h2>' +
-    '<p class="cap">Add as many as you like. Pause one to stop tracking it but keep its history.</p>' +
-    '<div class="hb-add"><input type="text" id="hb-new" maxlength="60" placeholder="New habit, e.g. Walk 30 minutes" autocomplete="off"><button class="hb-go" id="hb-new-go">Add</button></div>' +
-    ((list.length || archived.length) ? '<div class="tbl-scroll"><table><thead><tr><th>Habit</th><th class="num">Streak</th><th class="num">Best</th><th class="num">Done</th><th></th></tr></thead><tbody>' +
-      list.map(function (h) { return row(h, false); }).join("") + archived.map(function (h) { return row(h, true); }).join("") +
-      '</tbody></table></div>' : '') +
-    '</div>';
-
-  // ---- sync
-  var sync = '<div class="card"><h2>Sync across devices</h2>' + (hbToken()
-    ? '<p class="cap">Ticks are saved to your private habits-data repository on GitHub, so the iPad, iPhone and Mac all show the same.</p>' +
-      '<div class="hb-nav"><button class="hb-mini" id="hb-sync-now">Sync now</button><button class="hb-mini" id="hb-key-off">Remove key from this device</button></div>'
-    : '<p class="cap">Right now your ticks are saved on this device only. Paste a sync key once on each device and they will match everywhere.</p>' +
-      '<ol class="hb-steps">' +
-        '<li>On github.com, open <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens</b> and tap <b>Generate new token</b>.</li>' +
-        '<li>Name it <b>Habits sync</b>. For Expiration, pick the longest offered.</li>' +
-        '<li>Under Repository access choose <b>Only select repositories</b> and pick <b>habits-data</b>.</li>' +
-        '<li>Under Permissions → Repository permissions, set <b>Contents</b> to <b>Read and write</b>.</li>' +
-        '<li>Tap <b>Generate token</b>, copy it, and paste it below. Use the same key on your other devices.</li>' +
-      '</ol>' +
-      '<div class="hb-add"><input type="password" id="hb-key" placeholder="Paste the sync key" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="hb-go" id="hb-key-go">Save key</button></div>') +
-    '</div>';
-
-  host.innerHTML = todayCard + tiles + grid + yearCard + manage + sync;
-
-  if (hbToken() && !HB.busy && Date.now() - HB.last > 20000) hbSync();
-}
-
-el("tab-habits").addEventListener("click", function (e) {
-  var b = e.target.closest("button"); if (!b || b.disabled) return;
-  var today = hbToday();
-  if (b.dataset.hbTick) hbToggle(HB.day && HB.day < today ? HB.day : today, b.dataset.hbTick);
-  else if (b.dataset.hbCell) { var p = b.dataset.hbCell.split("|"); hbToggle(p[0], p[1]); }
-  else if (b.dataset.hbDay != null) {
-    var n = +b.dataset.hbDay, cur = HB.day || today;
-    HB.day = n === 0 ? null : hbAdd(cur, n);
-    if (HB.day && HB.day >= today) HB.day = null;
-    renderHabits();
-  } else if (b.dataset.hbMonth) {
-    var mk = HB.month || monthKey(today), d = new Date(+mk.slice(0, 4), +mk.slice(5, 7) - 1 + +b.dataset.hbMonth, 1);
-    HB.month = isoDate(d).slice(0, 7); renderHabits();
-  } else if (b.dataset.hbYear) {
-    HB.year = String(+(HB.year || today.slice(0, 4)) + +b.dataset.hbYear); renderHabits();
-  } else if (b.dataset.hbSuggest) hbAddHabit(b.dataset.hbSuggest);
-  else if (b.dataset.hbEdit) hbEdit(b.dataset.id, b.dataset.hbEdit);
-  else if (b.id === "hb-new-go") hbAddHabit(el("hb-new").value);
-  else if (b.id === "hb-key-go") hbSaveKey();
-  else if (b.id === "hb-sync-now") { HB.last = 0; hbSync(); }
-  else if (b.id === "hb-key-off") {
-    if (!confirm("Remove the sync key from this device? Your ticks stay here, they just stop syncing.")) return;
-    localStorage.removeItem(HB_LS.token); renderHabits();
-  }
-});
-el("tab-habits").addEventListener("keydown", function (e) {
-  if (e.key !== "Enter") return;
-  if (e.target.id === "hb-new") hbAddHabit(e.target.value);
-  if (e.target.id === "hb-key") hbSaveKey();
-});
-
-/* =====================================================================
    6. Shell wiring
    ===================================================================== */
 
@@ -7435,7 +6926,7 @@ function switchTab(name, keepSelecting) {
   var pt = el("page-title");
   if (pt) pt.textContent = tabLabel();
   if (document.body.classList.contains("sb-open")) sbOpen(false);
-  ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "emergency", "amma", "invest", "habits"].forEach(function (t) {
+  ["overview", "monthly", "salary", "tax", "spending", "txns", "accounts", "assets", "bills", "insurance", "emergency", "amma", "invest"].forEach(function (t) {
     el("tab-" + t).classList.toggle("hide", t !== name);
   });
   if (name === "overview") renderOverview();
@@ -7450,9 +6941,6 @@ function switchTab(name, keepSelecting) {
   if (name === "tax")       renderTax();
   if (name === "amma")      renderAmma();
   if (name === "invest")    renderInvest();
-  if (name === "habits")    renderHabits();
-  // nothing on Habits to export
-  el("select").classList.toggle("hide", name === "habits");
   window.scrollTo(0, 0);
 }
 
@@ -7624,7 +7112,7 @@ el("refresh").addEventListener("click", function () {
 
 el("signout").addEventListener("click", function () {
   if (!confirm("Remove the saved key and cached data from this device?")) return;
-  [LS.owner, LS.repo, LS.token, LS.cache, HB_LS.token, HB_LS.data, HB_LS.synced].forEach(function (k) { localStorage.removeItem(k); });
+  [LS.owner, LS.repo, LS.token, LS.cache].forEach(function (k) { localStorage.removeItem(k); });
   location.reload();
 });
 
