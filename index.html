@@ -1031,7 +1031,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v113";
+var APP_BUILD = "finances-shell-v114";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3518,7 +3518,7 @@ function renderAssets() {
     '<div class="card"><h2>Credit card EMI loans</h2>' +
       '<p class="cap">Latest statement position for each loan. ' + money(emiP) + ' principal plus ' + money(emiI) + ' interest still to pay.</p>' +
       (emiHtml
-        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th>Started</th><th>Ends</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
+        ? '<div class="tbl-scroll"><table><thead><tr><th>Loan</th><th>Started</th><th>Closes</th><th class="num">Original</th><th class="num">Monthly EMI</th><th class="num">Principal left</th><th class="num">Interest left</th><th>Remaining</th></tr></thead><tbody>' + emiHtml + '</tbody></table></div>'
         : '<div class="empty">No active EMI loans.</div>') +
     '</div>' +
 
