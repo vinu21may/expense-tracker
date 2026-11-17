@@ -501,6 +501,18 @@ table.top-exp .te-cat-inline { display: none; }
                     padding: 4px 0; cursor: pointer; }
 .card.flash { box-shadow: 0 0 0 2px var(--series-1), var(--shadow); transition: box-shadow .4s; }
 .up { color: var(--good-text); } .down { color: var(--critical); }
+/* Gold price card (v115) */
+.gold-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 4px 0 10px; }
+.gold-val { font-size: clamp(26px, 4.2vw, 36px); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.gold-val .muted { font-size: 15px; font-weight: 500; }
+.gold-head .up, .gold-head .down { font-weight: 600; font-variant-numeric: tabular-nums; }
+.gold-chart svg { display: block; width: 100%; height: 110px; }
+.gold-sub { font-size: 14px; font-weight: 600; margin: 18px 0 4px; }
+@media (max-width: 560px) {
+  table.gold-tbl th:first-child, table.gold-tbl td:first-child, .gold-wide { display: none; }
+  table.gold-tbl td, table.gold-tbl th { padding-left: 6px; padding-right: 6px; }
+  table.gold-tbl td:nth-child(2) { min-width: 120px; }
+}
 .m-card { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; }
 /* "Is the credit card paying off?" on Bank & Cards (v93) */
 .cv-sum .ac-val { margin-top: 8px; }
@@ -1031,7 +1043,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v114";
+var APP_BUILD = "finances-shell-v115";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1110,6 +1122,119 @@ function cacheSave(d) {
 }
 function cacheLoad() {
   try { var s = localStorage.getItem(LS.cache); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+}
+
+/* ---------------------------------------------------------------------
+   Gold prices (17 Nov 2026). gold.json sits beside data.json in the private
+   data repository; a GitHub Action there refreshes it every 30 minutes while
+   MCX trades, from a public gold price page that the app cannot read itself.
+   Fetched separately from data.json, so a missing or failed gold file never
+   stops the app loading. Last good copy kept in localStorage ft.gold.
+   --------------------------------------------------------------------- */
+var GOLD = null, GOLD_AT = 0;
+function fetchGold() {
+  var owner = localStorage.getItem(LS.owner), repo = localStorage.getItem(LS.repo), token = localStorage.getItem(LS.token);
+  var local = fetch("gold.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("no local gold"); return r.json();
+  });
+  return local.catch(function () {
+    if (!owner || !repo || !token) throw new Error("not signed in");
+    return fetch("https://api.github.com/repos/" + encodeURIComponent(owner) + "/" +
+                 encodeURIComponent(repo) + "/contents/gold.json", {
+      cache: "no-store",
+      headers: { "Authorization": "Bearer " + token, "Accept": "application/vnd.github.raw" }
+    }).then(function (r) {
+      if (!r.ok) throw new Error("gold.json " + r.status); return r.json();
+    });
+  }).then(function (g) {
+    if (!g || !g.mcx || !(g.mcx.ltp > 0)) throw new Error("bad gold.json");
+    GOLD = g; GOLD_AT = Date.now();
+    try { localStorage.setItem("ft.gold", JSON.stringify(g)); } catch (e) { /* memory only */ }
+    return g;
+  });
+}
+function goldCached() {
+  if (GOLD) return GOLD;
+  try { var s = localStorage.getItem("ft.gold"); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+}
+function agoText(ms) {
+  var m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + " min ago";
+  var h = Math.round(m / 60);
+  if (h < 36) return h + (h === 1 ? " hour ago" : " hours ago");
+  return Math.round(h / 24) + " days ago";
+}
+/* Draws the card into #gold-body. Uses what it has at once, then fetches
+   again if the copy in memory is more than 5 minutes old. */
+function goldCard() {
+  var g = goldCached();
+  if (g) goldDraw(g);
+  if (!GOLD || Date.now() - GOLD_AT > 5 * 60000) {
+    fetchGold().then(goldDraw).catch(function () {
+      var b = el("gold-body");
+      if (b && !g) b.innerHTML = '<p class="cap">Gold prices are not available yet. They are saved every 30 minutes on weekdays while the gold market is open.</p>';
+    });
+  }
+}
+function goldDraw(g) {
+  var b = el("gold-body"); if (!b) return;
+  var m = g.mcx, ltp = m.ltp, chg = m.close > 0 ? ltp - m.close : 0, pct = m.close > 0 ? chg / m.close * 100 : 0;
+  var stale = Date.now() - m.at > 2 * 3600000;
+
+  /* Every product scaled to 10g at 999 purity, so an 8g coin or a 995 coin
+     compares fairly, and its markup over the same gold at the MCX price. */
+  var rows = (g.sellers || []).map(function (s) {
+    var per10 = s.price * (10 / s.grams) * (0.999 / s.purity);
+    var goldVal = ltp * (s.grams / 10) * (s.purity / 0.999);
+    return { s: s, per10: per10, over: (s.price / 1.03 - goldVal) / goldVal };
+  }).sort(function (a, c) { return a.per10 - c.per10; });
+  var top = rows.slice(0, 6);
+
+  var tbl = top.map(function (r, i) {
+    var s = r.s;
+    return '<tr><td>' + (i + 1) + '</td><td><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.name) + '</a>' +
+      '<div class="muted" style="font-size:12.5px">' + esc(s.product) + (s.digital ? ' · sells back at ' + money(s.sell) + '/g' : '') + '</div></td>' +
+      '<td class="num">' + money(r.per10) + '</td>' +
+      '<td class="num">' + (r.over * 100).toFixed(1) + '%</td></tr>';
+  }).join("");
+  var dear = rows.length ? rows[rows.length - 1] : null;
+
+  /* One-year line from the source's daily history. */
+  var pts = (g.history || []).filter(function (p) { return p.p > 0; });
+  var chart = "", yearTxt = "";
+  if (pts.length > 2) {
+    var W = 760, H = 150, P = 8;
+    var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    var lo = Math.min.apply(null, pts.map(function (p) { return p.p; }));
+    var hi = Math.max.apply(null, pts.map(function (p) { return p.p; }));
+    var X = function (t) { return P + (t - t0) / ((t1 - t0) || 1) * (W - 2 * P); };
+    var Y = function (v) { return P + (hi - v) / ((hi - lo) || 1) * (H - 2 * P); };
+    var d = pts.map(function (p, i) { return (i ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.p).toFixed(1); }).join(" ");
+    chart = '<svg class="gold-line" data-glass="1" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+      '<defs><linearGradient id="gold-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5b83d" stop-opacity=".35"/><stop offset="1" stop-color="#f5b83d" stop-opacity="0"/></linearGradient></defs>' +
+      '<path d="' + d + ' L' + X(t1).toFixed(1) + ' ' + H + ' L' + X(t0).toFixed(1) + ' ' + H + ' Z" fill="url(#gold-fill)"/>' +
+      '<path d="' + d + '" fill="none" stroke="#f5b83d" stroke-width="2.2" vector-effect="non-scaling-stroke"/></svg>';
+    var yr = (ltp - pts[0].p) / pts[0].p * 100;
+    yearTxt = 'Last 12 months: <b class="' + (yr >= 0 ? "up" : "down") + '">' + (yr >= 0 ? "+" : "") + yr.toFixed(1) + '%</b>' +
+      ' · high ' + money(hi) + ' · low ' + money(lo) + (ltp < hi ? ' · now ' + Math.round((hi - ltp) / hi * 100) + '% below the high' : '');
+  }
+
+  b.innerHTML =
+    '<p class="cap">24K gold (999) on the MCX exchange, per 10 grams. ' +
+      (stale ? 'Market closed: last traded price, ' : 'Updated ') + agoText(m.at) + '.</p>' +
+    '<div class="gold-head"><div class="gold-val">' + money(ltp) + '<span class="muted"> /10g</span></div>' +
+      (m.close > 0 ? '<div class="' + (chg >= 0 ? "up" : "down") + '">' + (chg >= 0 ? "▲ " : "▼ ") + money(Math.abs(chg)) +
+        ' (' + Math.abs(pct).toFixed(2) + '%) today</div>' : '') +
+      '<div class="muted" style="font-size:13px">' + money(ltp / 10) + ' a gram</div></div>' +
+    (chart ? '<div class="gold-chart">' + chart + '</div><p class="cap" style="margin-top:6px">' + yearTxt + '</p>' : '') +
+    (tbl ? '<h3 class="gold-sub">Cheapest places to buy 10g right now</h3>' +
+      '<div class="tbl-scroll"><table class="gold-tbl"><thead><tr><th>#</th><th>Seller</th><th class="num">Price, 10g</th><th class="num">Over gold<span class="gold-wide"> value</span></th></tr></thead><tbody>' +
+      tbl + '</tbody></table></div>' +
+      '<p class="cap" style="margin-top:8px">Each seller\'s own listed price, including making charges and 3% GST, scaled to 10g of 999 gold. ' +
+      '"Over gold value" is what you pay above the same gold at today\'s MCX price, before GST: money you won\'t get back when you sell.' +
+      (dear ? ' The dearest of ' + rows.length + ' sellers checked, ' + esc(dear.s.name) + ', costs ' + money(dear.per10) + '.' : '') + '</p>' : '') +
+    '<p class="cap" style="margin-top:8px">Prices from <a href="' + esc(g.source || "https://gold.brewclaw.com/") + '" target="_blank" rel="noopener">gold.brewclaw.com</a>, saved every 30 minutes on weekdays.</p>';
 }
 
 /* =====================================================================
@@ -3713,6 +3838,15 @@ function renderAssets() {
     '</div>' +
 
     '<div class="card"><h2>Savings goals</h2><p class="cap">From the Savings Goals sheet.</p>' + goalHtml + '</div>';
+
+  /* Gold price card (17 Nov 2026): right after "What your money is in". */
+  var mixCard = Array.prototype.filter.call(el("tab-assets").querySelectorAll(".card > h2"),
+    function (h) { return h.textContent === "What your money is in"; })[0];
+  var gc = document.createElement("div");
+  gc.className = "card"; gc.id = "gold-card";
+  gc.innerHTML = '<h2>Gold price today</h2><div id="gold-body"><p class="cap">Loading gold prices…</p></div>';
+  if (mixCard) mixCard.parentNode.after(gc); else el("tab-assets").appendChild(gc);
+  goldCard();
 }
 
 /* The next premium date for a policy, and the days until it. A dated renewal

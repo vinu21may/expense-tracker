@@ -1,3 +1,4 @@
 # Never publish real data from this repository.
 data.json
 .DS_Store
+gold.json
