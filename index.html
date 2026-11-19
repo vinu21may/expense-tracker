@@ -560,6 +560,8 @@ table.cv-cmp tfoot td.num b { font-size: 15px; }
 .total .part .p-val { font-size: 16.5px; font-weight: 650; margin-top: 2px;
   letter-spacing: -0.01em; }
 .total .part .p-val.muted-val { color: var(--text-secondary); font-weight: 600; }
+.total .part .p-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.total .headline .gain { font-size: 13.5px; font-weight: 650; margin-top: 4px; }
 @media (max-width: 560px) { .total .parts { gap: 8px 20px; } .total .part { min-width: 96px; } }
 
 /* ---------------------------------------------------------------- charts */
@@ -1043,7 +1045,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v115";
+var APP_BUILD = "finances-shell-v116";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3121,7 +3123,9 @@ function renderAssets() {
   var savingsMissing = savingsAccts.filter(function (a) { return !a.known; });
   // Savings-account cash is shown on the Bank & Cards tab, not counted here:
   // Total invested is money put into FDs and holdings (Vinod, 29 Sep 2026).
-  var totalInvested = fdValue + invValue;
+  var totalInvested = fdValue + invValue;          // today's value
+  var putIn = fdTotal + invCost;                    // money actually put in
+  var gainAll = totalInvested - putIn;
 
   // Two Click 2 Invest Plus and two Sanchay Plus are now held, bought a few days
   // apart, so the name alone no longer identifies a row. The policy number does —
@@ -3743,17 +3747,27 @@ function renderAssets() {
 
   el("tab-assets").innerHTML =
     '<div class="card"><div class="total">' +
+      // v116 (Vinod, 19 Nov 2026): "Total invested" is now what was put in, with
+      // today's value beside it. Before, the one figure was already the value.
       '<div class="headline"><div class="lbl">Total invested</div>' +
-        '<div class="val">' + money(totalInvested) + '</div></div>' +
+        '<div class="val">' + money(putIn) + '</div></div>' +
+      '<div class="headline"><div class="lbl">Today’s value</div>' +
+        '<div class="val">' + money(totalInvested) + '</div>' +
+        '<div class="gain ' + (gainAll >= 0 ? 'up' : 'down') + '">' + (gainAll >= 0 ? '+' : '−') +
+          money(Math.abs(gainAll)) + (putIn ? ' (' + (gainAll >= 0 ? '+' : '−') +
+          Math.abs(gainAll / putIn * 100).toFixed(1) + '%)' : '') + '</div></div>' +
       '<div class="parts">' +
         '<div class="part"><div class="p-lbl">Fixed deposits</div>' +
-          '<div class="p-val">' + money(fdValue) + '</div></div>' +
+          '<div class="p-val">' + money(fdValue) + '</div>' +
+          '<div class="p-sub">' + money(fdTotal) + ' put in</div></div>' +
         '<div class="part"><div class="p-lbl">Investments</div>' +
-          '<div class="p-val">' + money(invValue) + '</div></div>' +
+          '<div class="p-val">' + money(invValue) + '</div>' +
+          '<div class="p-sub">' + money(invCost) + ' put in</div></div>' +
       '</div>' +
     '</div>' +
     stackHtml +
-    '<p class="cap" style="margin:14px 0 0">Fixed deposits at principal plus the interest earned so far (' + money(fdValue - fdTotal) + '), and investments at their last stated value. ' +
+    '<p class="cap" style="margin:14px 0 0">Total invested is what you put in: fixed-deposit principal, plus premiums and contributions paid into investments. ' +
+      'Today’s value counts fixed deposits with the interest earned so far (' + money(fdValue - fdTotal) + ') and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Bank &amp; Cards tab.</p>' +
     '</div>' +
 
