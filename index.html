@@ -1045,7 +1045,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v116";
+var APP_BUILD = "finances-shell-v117";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3136,6 +3136,76 @@ function renderAssets() {
     return String(r || "").replace(/\s*\(policy no\.?\s*pending\)\s*/i, "").trim();
   };
 
+  // v117 (Vinod, 19 Nov 2026): "how much does my nominee get as of today".
+  // Death value of each holding, from data only (no names in this public code):
+  //  - a ULIP pays the higher of fund value, sum assured and 105% of premiums;
+  //  - a savings plan pays its death cover (the policy's sum on Insurance);
+  //  - FDs, bonds, EPF and savings balances pass at today's value;
+  //  - a pure life policy counts only if it covers the same person as the
+  //    policies held as investments; one covering someone else is shown apart,
+  //    and accident-only cover is listed but kept out of the total.
+  var insByRef = {};
+  (DATA.insurance || []).forEach(function (p) { if (p.ref) insByRef[String(p.ref)] = p; });
+  var invRefs = {};
+  invs.forEach(function (i) { invRefs[String(i.ref || "")] = 1; });
+  var holder = (DATA.insurance || []).filter(function (p) { return invRefs[String(p.ref)]; })
+    .map(function (p) { return p.covers; })[0] || null;
+  var heirs = [];
+  DATA.fds.forEach(function (f) {
+    heirs.push({ name: f.id + (f.bank ? " · " + f.bank : ""), value: fdNow(f),
+                 how: "principal plus interest so far" });
+  });
+  invs.forEach(function (i) {
+    var p = insByRef[String(refLabel(i.ref))] || insByRef[String(i.ref)];
+    var sum = p && p.sum ? p.sum : 0, v = i.value || 0, how = "today’s value";
+    if (i.kind === "ULIP") {
+      var floor = 1.05 * (i.invested || 0), best = Math.max(v, sum, floor);
+      how = best === sum && sum > v ? "sum assured (more than the fund value of " + money(v) + ")"
+          : best === floor && floor > v ? "105% of premiums paid" : "fund value (more than the cover)";
+      v = best;
+    } else if (p && sum) {
+      how = "death cover (" + money(i.invested || 0) + " paid in so far)";
+      v = sum;
+    }
+    heirs.push({ name: i.name, ref: refLabel(i.ref), value: v, how: how });
+  });
+  var lifeOnly = (DATA.insurance || []).filter(function (p) {
+    return /^life/i.test(p.kind || "") && !invRefs[String(p.ref)] && p.sum;
+  });
+  lifeOnly.filter(function (p) { return holder && p.covers === holder; }).forEach(function (p) {
+    heirs.push({ name: p.name + " · " + p.insurer, ref: p.ref, value: p.sum, how: "life cover" });
+  });
+  var otherLife = lifeOnly.filter(function (p) { return !holder || p.covers !== holder; });
+  var accident = (DATA.insurance || []).filter(function (p) {
+    return /accident/i.test(p.kind || "") && p.sum && (!holder || String(p.covers).indexOf(holder) === 0);
+  });
+  if (savingsTotal > 0) heirs.push({ name: "Savings accounts", value: savingsTotal,
+                                     how: "last stated balances" });
+  heirs.sort(function (a, b) { return b.value - a.value; });
+  var heirTotal = heirs.reduce(function (s, h) { return s + h.value; }, 0);
+  var accTotal = accident.reduce(function (s, p) { return s + p.sum; }, 0);
+  var nomineeHtml = '<div class="card"><h2>What your nominee would get today</h2>' +
+    '<p class="cap">If something happened to you today: each holding at what it pays out on death, ' +
+    'which for insurance-linked plans is the life cover where that is higher than the value.</p>' +
+    '<div class="total"><div class="headline"><div class="lbl">Your nominee gets about</div>' +
+      '<div class="val">' + money(heirTotal) + '</div>' +
+      '<div class="gain up">' + money(heirTotal - totalInvested - savingsTotal) +
+        ' more than the holdings are worth today, from life cover</div></div></div>' +
+    '<div class="tax-lines" style="margin-top:14px">' +
+      heirs.map(function (h) {
+        return kv(esc(h.name) + (h.ref ? ' <span class="muted">' + esc(h.ref) + '</span>' : '') +
+                  '<br><small class="muted">' + esc(h.how) + '</small>', h.value);
+      }).join("") +
+      kv("Total", heirTotal, "total") +
+      (accTotal ? kv("Extra if it is an accident while driving your car (owner-driver cover)", accTotal, "note") : "") +
+    '</div>' +
+    '<p class="cap" style="margin:12px 0 0">Not counted: the EPF’s own insurance (EDLI, paid by EPFO on top of the ' +
+      'balance, up to ₹7 lakh) and any group life cover from your employer, which are not in the tracker' +
+      (otherLife.length ? '; and ' + otherLife.map(function (p) {
+        return esc(p.name) + ' (' + money(p.sum) + '), which insures ' + esc(p.covers) + ', not you'; }).join(", ") : '') +
+      '. Life-insurance death payouts are tax-free. FDs and bank balances go to the nominee or joint holder ' +
+      'on record with the bank, so keep those nominations current.</p></div>';
+
   // Every holding on one scale, biggest first. Fixed deposits with interest so far and
   // investments at their last stated value — the same basis as the total above,
   // so the bars add up to it. Cash is deliberately absent; it lives on Bank & Cards.
@@ -3770,6 +3840,7 @@ function renderAssets() {
       'Today’s value counts fixed deposits with the interest earned so far (' + money(fdValue - fdTotal) + ') and investments at their last stated value. ' +
       'Cash in savings accounts is not counted here; it is on the Bank &amp; Cards tab.</p>' +
     '</div>' +
+    nomineeHtml +
 
     '<div class="card"><h2>What your money is in</h2>' +
       '<p class="cap">Every holding on one scale, biggest first. Each bar is that holding ' +
