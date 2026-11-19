@@ -1045,7 +1045,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v118";
+var APP_BUILD = "finances-shell-v119";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3169,11 +3169,33 @@ function renderAssets() {
     }
     heirs.push({ name: i.name, ref: refLabel(i.ref), value: v, how: how });
   });
+  // v119 (19 Nov 2026): a policy's Nominees column ("Name 50%; Name 50%") shows who
+  // gets what. A life cover on the holder whose sum is blank is listed apart, as
+  // "amount not known yet", and joins the total once the sum is filled in.
+  function nomineeSplit(p) {
+    return String(p.nominees || "").split(/\s*;\s*/).map(function (x) {
+      var m = x.match(/^(.*?)\s*(\d+(?:\.\d+)?)\s*%$/);
+      return m ? { name: m[1], pct: parseFloat(m[2]) } : null;
+    }).filter(Boolean);
+  }
+  function splitText(p, total) {
+    var sp = nomineeSplit(p);
+    if (!sp.length) return "";
+    return sp.map(function (n) {
+      return n.name + " " + (total ? money(total * n.pct / 100) + " (" + n.pct + "%)" : n.pct + "%");
+    }).join(" · ");
+  }
   var lifeOnly = (DATA.insurance || []).filter(function (p) {
     return /^life/i.test(p.kind || "") && !invRefs[String(p.ref)] && p.sum;
   });
   lifeOnly.filter(function (p) { return holder && p.covers === holder; }).forEach(function (p) {
-    heirs.push({ name: p.name + " · " + p.insurer, ref: p.ref, value: p.sum, how: "life cover" });
+    var sp = splitText(p, p.sum);
+    heirs.push({ name: p.name, ref: "", value: p.sum,
+                 how: "life cover" + (sp ? ": " + sp : "") });
+  });
+  var lifeUnknown = (DATA.insurance || []).filter(function (p) {
+    return /^life/i.test(p.kind || "") && !invRefs[String(p.ref)] && !p.sum &&
+           holder && p.covers === holder;
   });
   var otherLife = lifeOnly.filter(function (p) { return !holder || p.covers !== holder; });
   var accident = (DATA.insurance || []).filter(function (p) {
@@ -3206,9 +3228,14 @@ function renderAssets() {
       }).join("") +
       kv("Total", heirTotal, "total") +
       (accTotal ? kv("Extra if it is an accident while driving your car (owner-driver cover)", accTotal, "note") : "") +
+      lifeUnknown.map(function (p) {
+        var sp = splitText(p, 0);
+        return kvText(esc(p.name) + '<br><small class="muted">life cover, paid on top of the total' +
+                      (sp ? ': ' + esc(sp) : '') + '</small>', "amount not known yet", "note");
+      }).join("") +
     '</div>' +
     '<p class="cap" style="margin:12px 0 0">Not counted: the EPF’s own insurance (EDLI, paid by EPFO on top of the ' +
-      'balance, up to ₹7 lakh) and any group life cover from your employer, which are not in the tracker' +
+      'balance, up to ₹7 lakh)' +
       (otherLife.length ? '; and ' + otherLife.map(function (p) {
         return esc(p.name) + ' (' + money(p.sum) + '), which insures ' + esc(p.covers) + ', not you'; }).join(", ") : '') +
       '. Life-insurance death payouts are tax-free. FDs and bank balances go to the nominee or joint holder ' +
