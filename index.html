@@ -1045,7 +1045,7 @@ body.selecting main { padding-bottom: calc(110px + env(safe-area-inset-bottom));
 var LS = { owner: "ft.owner", repo: "ft.repo", token: "ft.token", cache: "ft.cache" };
 
 /* Must equal CACHE in sw.js -- bump both together. Refresh compares them. */
-var APP_BUILD = "finances-shell-v117";
+var APP_BUILD = "finances-shell-v118";
 
 var inr0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 var inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3179,8 +3179,16 @@ function renderAssets() {
   var accident = (DATA.insurance || []).filter(function (p) {
     return /accident/i.test(p.kind || "") && p.sum && (!holder || String(p.covers).indexOf(holder) === 0);
   });
-  if (savingsTotal > 0) heirs.push({ name: "Savings accounts", value: savingsTotal,
-                                     how: "last stated balances" });
+  // v118 (Vinod, 19 Nov 2026): one line per savings account, so the joint one is
+  // visible. "Joint" comes from the account's own notes in Account Details.
+  var acctNotes = {};
+  (DATA.accounts || []).forEach(function (a) { acctNotes[a.name] = a.notes || ""; });
+  savingsAccts.filter(function (a) { return a.known && a.value > 0; }).forEach(function (a) {
+    var joint = /joint/i.test(acctNotes[a.name] || "");
+    heirs.push({ name: a.name + (joint ? " (joint account)" : ""), value: a.value,
+                 how: joint ? "whole balance passes to the surviving joint holder"
+                            : "balance, to the nominee registered with the bank" });
+  });
   heirs.sort(function (a, b) { return b.value - a.value; });
   var heirTotal = heirs.reduce(function (s, h) { return s + h.value; }, 0);
   var accTotal = accident.reduce(function (s, p) { return s + p.sum; }, 0);
